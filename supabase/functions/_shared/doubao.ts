@@ -29,6 +29,17 @@ function authHeaders(): HeadersInit {
   return { Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' };
 }
 
+// 带超时的 fetch：避免某个请求永久挂起拖到 Edge Function 墙钟上限。
+async function fetchWithTimeout(input: string | URL, init: RequestInit, ms: number): Promise<Response> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(input, { ...init, signal: ctrl.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 function buildText(prompt: string, ratio: string, durationSec: number): string {
   return [prompt.trim(), `--ratio ${ratio}`, `--dur ${durationSec}`].join(' ');
 }
@@ -44,11 +55,11 @@ export async function createTask(
   const content: unknown[] = [{ type: 'text', text }];
   if (imageUrl) content.push({ type: 'image_url', image_url: { url: imageUrl } });
 
-  const res = await fetch(`${BASE}${TASKS}`, {
+  const res = await fetchWithTimeout(`${BASE}${TASKS}`, {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({ model: MODEL, content }),
-  });
+  }, 20_000);
   if (!res.ok) {
     const errTxt = await res.text();
     throw new Error(`豆包创建任务失败 (${res.status}): ${errTxt.slice(0, 200)}`);
@@ -63,7 +74,7 @@ export async function queryTask(taskId: string): Promise<TaskStatus> {
   if (!KEY) throw new Error('DOUBAO_API_KEY 未配置');
   const url = new URL(`${BASE}${TASKS}`);
   url.searchParams.set('filter.task_ids', taskId);
-  const res = await fetch(url.toString(), { headers: authHeaders() });
+  const res = await fetchWithTimeout(url, { headers: authHeaders() }, 20_000);
   if (!res.ok) {
     const errTxt = await res.text();
     throw new Error(`豆包查询失败 (${res.status}): ${errTxt.slice(0, 200)}`);

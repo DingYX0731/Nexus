@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { applyCharge } from '../_shared/credits.ts';
-import { createTask } from './doubao.ts';
+import { createTask } from '../_shared/doubao.ts';
 
 // 异步两段式 · 第一段：发起生成。
 // 校验 JWT → 扣额度 → 调豆包发起任务 → 插 videos 占位行(status=generating) → 立即返回。

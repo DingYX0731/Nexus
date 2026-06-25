@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { queryTask } from '../generate-video/doubao.ts';
+import { queryTask } from '../_shared/doubao.ts';
 
 // 异步两段式 · 第二段：轮询。
 // 客户端每隔几秒调一次。校验 JWT → 查 video 行的 doubao_task_id → 查豆包状态：
@@ -20,8 +20,17 @@ function json(obj: unknown, status: number): Response {
 async function store(
   admin: any, bucket: string, path: string, srcUrl: string, contentType: string,
 ): Promise<string> {
-  const res = await fetch(srcUrl);
-  const buf = new Uint8Array(await res.arrayBuffer());
+  // 下载豆包视频加 60s 超时，避免卡住拖到墙钟上限
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 60_000);
+  let buf: Uint8Array;
+  try {
+    const res = await fetch(srcUrl, { signal: ctrl.signal });
+    if (!res.ok) throw new Error(`下载视频失败 ${res.status}`);
+    buf = new Uint8Array(await res.arrayBuffer());
+  } finally {
+    clearTimeout(t);
+  }
   const { error } = await admin.storage.from(bucket).upload(path, buf, { contentType, upsert: true });
   if (error) throw error;
   const { data } = admin.storage.from(bucket).getPublicUrl(path);
