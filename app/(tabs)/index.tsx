@@ -2,26 +2,61 @@ import { useEffect, useMemo } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useFocusEffect } from 'expo-router';
+import { useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Sparkles } from 'lucide-react-native';
 import { FeedPager } from '@/components/feed/FeedPager';
 import { useLocalVideos } from '@/store/videos';
+import { listFeed } from '@/api/videos';
+import { hasSupabase } from '@/api/client';
 import { colors, radius, spacing, typography } from '@/theme';
 
 export default function FeedScreen() {
   const router = useRouter();
-  const hydrate = useLocalVideos((s) => s.hydrate);
-  // 直接订阅 zustand,新视频出现立即重渲染
-  const allVideos = useLocalVideos((s) => s.videos);
-  useEffect(() => { hydrate(); }, [hydrate]);
+  const qc = useQueryClient();
 
-  // 只显示"已发布"的视频(visibility === 'public' 或未定义 - 老数据兼容)
-  // 排序:按时间倒序
-  const videos = useMemo(
-    () => allVideos
+  // ── Supabase 路径：react-query 从云端读已发布视频 ──────────────────────────
+  const { data: remoteVideos = [], isLoading: remoteLoading } = useQuery({
+    queryKey: ['feed'],
+    queryFn: listFeed,
+    enabled: hasSupabase,
+  });
+
+  // 每次 tab 聚焦时重新拉取（捕捉他人发布的新视频）
+  useFocusEffect(
+    useCallback(() => {
+      if (hasSupabase) {
+        qc.invalidateQueries({ queryKey: ['feed'] });
+      }
+    }, [qc]),
+  );
+
+  // ── 本地保底路径 ────────────────────────────────────────────────────────────
+  const hydrate = useLocalVideos((s) => s.hydrate);
+  const allLocalVideos = useLocalVideos((s) => s.videos);
+  useEffect(() => {
+    if (!hasSupabase) hydrate();
+  }, [hydrate]);
+
+  const localVideos = useMemo(
+    () => allLocalVideos
       .filter((v) => (v.visibility ?? 'public') === 'public' && v.status === 'ready')
       .sort((a, b) => b.created_at.localeCompare(a.created_at)),
-    [allVideos],
+    [allLocalVideos],
   );
+
+  // ── 统一出口 ────────────────────────────────────────────────────────────────
+  const videos = hasSupabase ? remoteVideos : localVideos;
+  const isLoading = hasSupabase ? remoteLoading : false;
+
+  if (isLoading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator color={colors.primary} />
+      </View>
+    );
+  }
 
   if (videos.length === 0) {
     return (
