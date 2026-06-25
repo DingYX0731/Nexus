@@ -1,8 +1,19 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { applyCharge } from '../_shared/credits.ts';
-import { generate } from './doubao.ts';
+import { createTask } from './doubao.ts';
+
+// 异步两段式 · 第一段：发起生成。
+// 校验 JWT → 扣额度 → 调豆包发起任务 → 插 videos 占位行(status=generating) → 立即返回。
+// 几秒返回，不撞墙钟。出片与转存由 poll-video 函数完成；失败退款也在那里。
 
 const COST = 1;
+
+function json(obj: unknown, status: number): Response {
+  return new Response(JSON.stringify(obj), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
 
 Deno.serve(async (req) => {
   try {
@@ -12,7 +23,9 @@ Deno.serve(async (req) => {
     const anon = Deno.env.get('SUPABASE_ANON_KEY')!;
     const service = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-    const userClient = createClient(url, anon, { global: { headers: { Authorization: authHeader } } });
+    const userClient = createClient(url, anon, {
+      global: { headers: { Authorization: authHeader } },
+    });
     const { data: ures } = await userClient.auth.getUser(jwt);
     const user = ures?.user;
     if (!user) return json({ error: '未登录' }, 401);
@@ -21,64 +34,56 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const { kind, prompt, parentTailFrameUrl, parentId, aspect } = body;
 
-    // 1. 读余额 + 扣
-    const { data: cRow } = await admin.from('credits').select('balance').eq('user_id', user.id).maybeSingle();
+    // 1. 读余额 + 扣（service role，绕过 RLS）
+    const { data: cRow } = await admin
+      .from('credits').select('balance').eq('user_id', user.id).maybeSingle();
     const charged = applyCharge(cRow?.balance ?? 0, COST);
     if (!charged.ok) return json({ error: '额度不足' }, 402);
     await admin.from('credits').update({ balance: charged.next }).eq('user_id', user.id);
 
     try {
-      // 2. 调豆包
-      const gen = await generate(
+      // 2. 调豆包发起任务（几秒）
+      const taskId = await createTask(
         prompt,
         aspect ?? '9:16',
         kind === 'continuation' ? parentTailFrameUrl : undefined,
       );
 
-      // 3. 下载并转存
+      // 3. 算 root/depth/remix_kind
       const vid = crypto.randomUUID();
-      const videoUrl = await store(admin, 'videos', `${user.id}/${vid}.mp4`, gen.videoUrl, 'video/mp4');
-      let thumbUrl: string | null = null;
-      if (gen.tailFrameUrl) thumbUrl = await store(admin, 'thumbnails', `${user.id}/${vid}.jpg`, gen.tailFrameUrl, 'image/jpeg');
-
-      // 4. 取父视频算 root/depth
       let rootId = vid, depth = 0, remixKind: string | null = null;
       if (parentId) {
-        const { data: parent } = await admin.from('videos').select('root_id,depth').eq('id', parentId).maybeSingle();
+        const { data: parent } = await admin
+          .from('videos').select('root_id,depth').eq('id', parentId).maybeSingle();
         if (parent) { rootId = parent.root_id; depth = parent.depth + 1; }
         remixKind = kind === 'continuation' ? 'continuation' : 'prompt_remix';
       }
 
-      // 5. 插 videos 行
+      // 4. 插占位行 status=generating，记 doubao_task_id；video_url 暂存空串
       const { data: inserted, error: insErr } = await admin.from('videos').insert({
-        id: vid, author_id: user.id, parent_id: parentId ?? null, root_id: rootId,
-        remix_kind: remixKind, depth, prompt, video_url: videoUrl, thumbnail_url: thumbUrl,
-        tail_frame_url: thumbUrl, ai_provider: 'doubao', status: 'ready', visibility: 'public',
-      }).select('*').single();
+        id: vid,
+        author_id: user.id,
+        parent_id: parentId ?? null,
+        root_id: rootId,
+        remix_kind: remixKind,
+        depth,
+        prompt,
+        video_url: '',
+        ai_provider: 'doubao',
+        status: 'generating',
+        visibility: 'public',
+        doubao_task_id: taskId,
+      }).select('id').single();
       if (insErr) throw insErr;
 
-      const { data: full } = await admin.from('video_with_stats')
-        .select('*, author:profiles!videos_author_id_fkey(*)').eq('id', vid).single();
-      return json(full ?? inserted, 200);
+      // 5. 立即返回 videoId + generating
+      return json({ videoId: (inserted as { id: string }).id, status: 'generating' }, 200);
     } catch (genErr) {
-      // 失败退还额度
-      await admin.from('credits').update({ balance: (cRow?.balance ?? 0) }).eq('user_id', user.id);
+      // 发起阶段失败：退还额度（短调用，可靠执行，写回扣前余额）
+      await admin.from('credits').update({ balance: cRow?.balance ?? 0 }).eq('user_id', user.id);
       return json({ error: String((genErr as Error).message ?? genErr) }, 500);
     }
   } catch (e) {
     return json({ error: String((e as Error).message ?? e) }, 500);
   }
 });
-
-async function store(admin: any, bucket: string, path: string, srcUrl: string, contentType: string): Promise<string> {
-  const res = await fetch(srcUrl);
-  const buf = new Uint8Array(await res.arrayBuffer());
-  const { error } = await admin.storage.from(bucket).upload(path, buf, { contentType, upsert: true });
-  if (error) throw error;
-  const { data } = admin.storage.from(bucket).getPublicUrl(path);
-  return data.publicUrl as string;
-}
-
-function json(obj: unknown, status: number): Response {
-  return new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json' } });
-}
