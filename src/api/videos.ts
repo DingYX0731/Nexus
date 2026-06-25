@@ -225,3 +225,13 @@ export async function recordPlay(videoId: string): Promise<void> {
   if (hasSupabase) return repo.recordPlayRemote(videoId);
   snapshot().bumpStat(videoId, 'play_count');
 }
+
+export async function setVisibility(videoId: string, vis: 'public' | 'private'): Promise<void> {
+  if (hasSupabase) return repo.setVisibilityRemote(videoId, vis);
+  useLocalVideos.getState().setVisibility(videoId, vis);
+}
+
+export async function deleteVideo(videoId: string): Promise<void> {
+  if (hasSupabase) return repo.deleteVideoRemote(videoId);
+  useLocalVideos.getState().deleteVideo(videoId);
+}
