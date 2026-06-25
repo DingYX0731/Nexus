@@ -31,7 +31,11 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
 .env*.local
+
+# demo source assets (原始下载素材，与 assets/videos 重复，不入库)
+demo-assets/
 
 # typescript
 *.tsbuildinfo
