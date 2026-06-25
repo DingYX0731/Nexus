@@ -5,24 +5,7 @@ import { useRouter } from 'expo-router';
 import { X, Sparkles, AlertCircle } from 'lucide-react-native';
 import { colors, radius, spacing, typography } from '@/theme';
 import { useAuth } from '@/store/auth';
-
-const USERNAME_RE = /^[a-zA-Z0-9_一-龥]+$/;
-
-interface Validation {
-  ok: boolean;
-  msg?: string;
-}
-
-function validateUsername(raw: string): Validation {
-  const name = raw.trim();
-  if (name.length === 0) return { ok: false, msg: '请输入用户名' };
-  if (name.length < 2) return { ok: false, msg: '用户名至少 2 个字符' };
-  if (name.length > 20) return { ok: false, msg: '用户名最多 20 个字符' };
-  if (!USERNAME_RE.test(name)) {
-    return { ok: false, msg: '只允许字母、数字、下划线和中文' };
-  }
-  return { ok: true };
-}
+import { validateUsername } from '@/api/auth/validateUsername';
 
 export default function LoginScreen() {
   const router = useRouter();
