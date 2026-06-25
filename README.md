@@ -52,6 +52,77 @@ npm run typecheck    # tsc --noEmit
 
 或扫码用 **Expo Go** 在真机运行(M1 阶段不需要原生构建)。
 
+## 后端配置（Supabase M2+）
+
+以下步骤适用于配置真实后端。跳过这些步骤则 App 以本地 Mock 模式运行（无需任何后端）。
+
+### 1. 建 Supabase 项目
+
+1. 前往 [https://supabase.com](https://supabase.com)，创建新项目。
+2. 在 **Project Settings → API** 里复制 **Project URL** 和 **anon public** 密钥。
+3. 把这两个值填入 `.env`：
+   ```
+   EXPO_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
+   EXPO_PUBLIC_SUPABASE_ANON_KEY=<anon-public-key>
+   EXPO_PUBLIC_AI_PROVIDER=doubao
+   ```
+
+### 2. 跑 Migrations（建表）
+
+```bash
+# 安装 Supabase CLI（如未安装）
+npm install -g supabase
+
+# 连接到远程项目（需要 project-ref 和 db password）
+supabase link --project-ref <project-ref>
+
+# 推送所有 migration
+supabase db push
+```
+
+Migration 文件位于 `supabase/migrations/`。
+
+### 3. 部署 Edge Function
+
+```bash
+# 部署 generate-video 函数
+supabase functions deploy generate-video
+```
+
+### 4. 配置 Edge Function secrets
+
+在 Supabase Dashboard → Edge Functions → generate-video → Secrets，或通过 CLI：
+
+```bash
+supabase secrets set DOUBAO_API_KEY=<你的豆包密钥>
+supabase secrets set DOUBAO_BASE_URL=https://llmapi.paratera.com
+supabase secrets set DOUBAO_MODEL=Doubao-Seedance-1.0-Pro
+```
+
+豆包密钥**仅放在 Edge Function secrets**，不要写入客户端 `.env`。
+
+### 5. 关闭邮箱验证（开发阶段）
+
+在 Supabase Dashboard → Authentication → Settings → Email → 关闭 **Confirm email**。
+
+正式发布前再重新开启并配置 SMTP。
+
+### 6. 跑 seed 脚本（灌入 demo 视频）
+
+seed 脚本会把 `assets/videos/001-005.mp4` 上传到 Supabase Storage，并向 `videos` 表插入 5 行记录。
+
+**需要先确保 Storage bucket `videos` 已存在并设为 Public**（Dashboard → Storage → New bucket → name: `videos`，勾选 Public）。
+
+```bash
+SUPABASE_URL=https://<project-ref>.supabase.co \
+SUPABASE_SERVICE_ROLE_KEY=<service-role-key> \
+npx tsx scripts/seed-demo-videos.ts
+```
+
+`SUPABASE_SERVICE_ROLE_KEY` 在 **Project Settings → API → service_role** 里复制。**勿提交此密钥**。
+
+---
+
 ## 环境变量
 
 复制 `.env.example` 到 `.env`(M1 阶段可不配,使用 Mock):

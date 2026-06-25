@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { hasSupabase } from '@/api/client';
+import { listCommentsRemote, addCommentRemote } from '@/api/supabase/commentsRepo';
 
 export interface Comment {
   id: string;
@@ -96,7 +98,21 @@ export const useComments = create<CommentsStore>((set, get) => ({
   byVideo: {},
   ensureSeeded: (videoId) => {
     if (get().byVideo[videoId]) return;
-    set((s) => ({ byVideo: { ...s.byVideo, [videoId]: seedFor(videoId) } }));
+    if (hasSupabase) {
+      // Kick off async fetch; populate byVideo when resolved
+      listCommentsRemote(videoId)
+        .then((comments) => {
+          set((s) => ({ byVideo: { ...s.byVideo, [videoId]: comments } }));
+        })
+        .catch(() => {
+          // Fallback to local seed on error
+          set((s) => ({ byVideo: { ...s.byVideo, [videoId]: seedFor(videoId) } }));
+        });
+      // Optimistically set empty array so we don't re-trigger while fetching
+      set((s) => ({ byVideo: { ...s.byVideo, [videoId]: s.byVideo[videoId] ?? [] } }));
+    } else {
+      set((s) => ({ byVideo: { ...s.byVideo, [videoId]: seedFor(videoId) } }));
+    }
   },
   add: (videoId, text, parentId, author) => {
     const c: Comment = {
@@ -112,6 +128,24 @@ export const useComments = create<CommentsStore>((set, get) => ({
       parentId,
       replyCount: 0,
     };
+    if (hasSupabase) {
+      addCommentRemote(videoId, text, author.id)
+        .then((remote) => {
+          set((s) => {
+            const cur = s.byVideo[videoId] ?? [];
+            // Replace the optimistic entry with the remote one
+            const withoutOptimistic = cur.filter((x) => x.id !== c.id);
+            const next = parentId
+              ? withoutOptimistic.map((x) => (x.id === parentId ? { ...x, replyCount: x.replyCount + 1 } : x)).concat(remote)
+              : [remote, ...withoutOptimistic];
+            return { byVideo: { ...s.byVideo, [videoId]: next } };
+          });
+        })
+        .catch(() => {
+          // Keep the optimistic local entry on error (already added below)
+        });
+    }
+    // Optimistically add locally (so UI is immediate)
     set((s) => {
       const cur = s.byVideo[videoId] ?? [];
       const next = parentId
