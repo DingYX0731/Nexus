@@ -24,7 +24,7 @@ function withLiked(videos: Video[], liked: Set<string>): Video[] {
 export async function listFeedRows(): Promise<Video[]> {
   const { data, error } = await supabase()
     .from('video_with_stats').select(SELECT)
-    .eq('visibility', 'public').order('created_at', { ascending: false });
+    .eq('visibility', 'public').eq('status', 'ready').order('created_at', { ascending: false });
   if (error) throw error;
   const videos = (data as VideoWithStatsRow[]).map(rowToVideo);
   return withLiked(videos, await likedSet(currentUserId(), videos.map((v) => v.id)));
@@ -85,11 +85,13 @@ export async function recordPlayRemote(videoId: string): Promise<void> {
 }
 
 export async function setVisibilityRemote(id: string, vis: 'public' | 'private'): Promise<void> {
-  await supabase().from('videos').update({ visibility: vis }).eq('id', id);
+  const { error } = await supabase().from('videos').update({ visibility: vis }).eq('id', id);
+  if (error) throw error;
 }
 
 export async function deleteVideoRemote(id: string): Promise<void> {
-  await supabase().from('videos').delete().eq('id', id);
+  const { error } = await supabase().from('videos').delete().eq('id', id);
+  if (error) throw error;
 }
 
 // publishEdit 用：不调 AI，直接插一行（复制父视频 URL + editMetadata）
