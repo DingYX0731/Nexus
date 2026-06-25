@@ -29,7 +29,11 @@ Deno.serve(async (req) => {
 
     try {
       // 2. 调豆包
-      const gen = await generate(prompt, kind === 'continuation' ? parentTailFrameUrl : undefined);
+      const gen = await generate(
+        prompt,
+        aspect ?? '9:16',
+        kind === 'continuation' ? parentTailFrameUrl : undefined,
+      );
 
       // 3. 下载并转存
       const vid = crypto.randomUUID();
