@@ -12,7 +12,7 @@
  * 注意：
  *   - 需要 SUPABASE_URL 和 SUPABASE_SERVICE_ROLE_KEY 环境变量（不要硬编码）。
  *   - 使用 service role key（绕过 RLS），仅在服务端/本地 seed 时使用。
- *   - 如果 videos 表已有同路径的记录，脚本会跳过已存在的条目（upsert by video_url）。
+ *   - 幂等：重复运行会先按 video_url 删除旧 seed 行再重新插入。
  *   - 需要先跑 supabase 的 migrations 初始化表结构。
  */
 
@@ -128,30 +128,34 @@ async function main() {
     const videoUrl = urlData.publicUrl;
     console.log(`[seed] 公开 URL: ${videoUrl}`);
 
-    // ── 3. 向 videos 表插入（upsert by video_url）───────────────────────────
+    // ── 3. 向 videos 表插入 ──────────────────────────────────────────────────
+    // 幂等：先按 video_url 删掉旧的 seed 行，再插入。
+    // （video_url 列无 unique 约束，故不能用 onConflict upsert。）
+    await supabase.from('videos').delete().eq('video_url', videoUrl);
+
+    // seed 视频是根节点：预生成 id，root_id 自引用（root_id 列 not null）。
+    const id = crypto.randomUUID();
     const { error: insertError } = await supabase
       .from('videos')
-      .upsert(
-        {
-          author_id: null,       // seed 视频无归属用户
-          prompt: entry.prompt,
-          video_url: videoUrl,
-          thumbnail_url: null,
-          tail_frame_url: null,
-          duration_ms: entry.durationMs,
-          width: entry.width,
-          height: entry.height,
-          ai_provider: 'doubao',
-          visibility: 'public',
-          status: 'ready',
-          depth: 0,
-          parent_id: null,
-          root_id: null,
-          remix_kind: null,
-          edit_metadata: null,
-        },
-        { onConflict: 'video_url', ignoreDuplicates: true },
-      );
+      .insert({
+        id,
+        author_id: null,       // seed 视频无归属用户
+        prompt: entry.prompt,
+        video_url: videoUrl,
+        thumbnail_url: null,
+        tail_frame_url: null,
+        duration_ms: entry.durationMs,
+        width: entry.width,
+        height: entry.height,
+        ai_provider: 'doubao',
+        visibility: 'public',
+        status: 'ready',
+        depth: 0,
+        parent_id: null,
+        root_id: id,           // 自引用：根节点
+        remix_kind: null,
+        edit_metadata: null,
+      });
 
     if (insertError) {
       console.error(`[seed] 插入 videos 表失败 ${entry.filename}:`, insertError.message);
