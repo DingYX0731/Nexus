@@ -5,23 +5,34 @@ import { useRouter } from 'expo-router';
 import { X, Sparkles, AlertCircle } from 'lucide-react-native';
 import { colors, radius, spacing, typography } from '@/theme';
 import { useAuth } from '@/store/auth';
-import { validateUsername } from '@/api/auth/validateUsername';
+import { validateEmail, validatePassword, validateUsername } from '@/api/auth/validateUsername';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { signInMock } = useAuth();
+  const { signUp, signIn } = useAuth();
+  const [mode, setMode] = useState<'signIn' | 'signUp'>('signIn');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
-  const [touched, setTouched] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
 
-  const validation = useMemo(() => validateUsername(username), [username]);
-  // 用户没碰过输入框时不显示错误(避免一打开就标红)
-  const showError = touched && !validation.ok && username.length > 0;
+  const emailV = useMemo(() => validateEmail(email), [email]);
+  const pwV = useMemo(() => validatePassword(password), [password]);
+  const nameV = useMemo(() => validateUsername(username), [username]);
+  const canSubmit =
+    emailV.ok && pwV.ok && (mode === 'signIn' || nameV.ok) && !submitting;
 
-  const onSubmit = () => {
-    setTouched(true);
-    if (!validation.ok) return;
-    signInMock(username.trim());
-    router.back();
+  const onSubmit = async () => {
+    setServerError(null);
+    if (!canSubmit) return;
+    setSubmitting(true);
+    const res = mode === 'signUp'
+      ? await signUp(email.trim(), password, username.trim())
+      : await signIn(email.trim(), password);
+    setSubmitting(false);
+    if (res.ok) router.back();
+    else setServerError(res.error ?? '操作失败，请重试');
   };
 
   return (
@@ -39,47 +50,95 @@ export default function LoginScreen() {
           <View style={styles.heroIcon}>
             <Sparkles color={colors.primary} size={28} />
           </View>
-          <Text style={styles.title}>用一个用户名开始</Text>
-          <Text style={styles.sub}>
-            登录后获得 5 个免费额度,可生成 AI 视频、点赞、续写。{'\n'}
-            用一个用户名快速开始,无需密码。
+          <Text style={styles.title}>
+            {mode === 'signIn' ? '登录账号' : '创建账号'}
           </Text>
+          <Text style={styles.sub}>
+            {mode === 'signIn'
+              ? '登录后获得 5 个免费额度，可生成 AI 视频、点赞、续写。'
+              : '注册后获得 5 个免费额度，可生成 AI 视频、点赞、续写。'}
+          </Text>
+
           <View style={styles.fieldGroup}>
-            <View style={[styles.inputWrap, showError && styles.inputWrapError]}>
-              <Text style={styles.at}>@</Text>
+            {/* Email */}
+            <View style={styles.inputWrap}>
               <TextInput
                 style={styles.input}
-                value={username}
-                onChangeText={(t) => { setUsername(t); if (!touched) setTouched(true); }}
-                onBlur={() => setTouched(true)}
-                placeholder="2-20 个字符,字母/数字/下划线/中文"
+                value={email}
+                onChangeText={setEmail}
+                placeholder="邮箱"
                 placeholderTextColor={colors.textDim}
+                keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
-                maxLength={20}
                 onSubmitEditing={onSubmit}
-                returnKeyType="done"
+                returnKeyType="next"
               />
-              <Text style={styles.counter}>{username.length}/20</Text>
             </View>
-            {showError ? (
-              <View style={styles.errorRow}>
-                <AlertCircle color={colors.danger} size={13} />
-                <Text style={styles.errorText}>{validation.msg}</Text>
+
+            {/* Password */}
+            <View style={styles.inputWrap}>
+              <TextInput
+                style={styles.input}
+                value={password}
+                onChangeText={setPassword}
+                placeholder="密码（至少 6 位）"
+                placeholderTextColor={colors.textDim}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+                onSubmitEditing={onSubmit}
+                returnKeyType={mode === 'signUp' ? 'next' : 'done'}
+              />
+            </View>
+
+            {/* Username — signUp only */}
+            {mode === 'signUp' && (
+              <View style={styles.inputWrap}>
+                <TextInput
+                  style={styles.input}
+                  value={username}
+                  onChangeText={setUsername}
+                  placeholder="用户名（2-20 字符）"
+                  placeholderTextColor={colors.textDim}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  maxLength={20}
+                  onSubmitEditing={onSubmit}
+                  returnKeyType="done"
+                />
               </View>
-            ) : (
-              <Text style={styles.hint}>例:demo_user、小红、kira_2024</Text>
             )}
           </View>
+
+          {/* Server error */}
+          {serverError ? (
+            <View style={styles.errorRow}>
+              <AlertCircle color={colors.danger} size={13} />
+              <Text style={styles.errorText}>{serverError}</Text>
+            </View>
+          ) : null}
+
           <Pressable
-            style={[styles.button, !validation.ok && styles.buttonDisabled]}
-            disabled={!validation.ok}
+            style={[styles.button, !canSubmit && styles.buttonDisabled]}
+            disabled={!canSubmit}
             onPress={onSubmit}
           >
-            <Text style={styles.buttonText}>登录</Text>
+            <Text style={styles.buttonText}>
+              {submitting ? '请稍候…' : mode === 'signIn' ? '登录' : '注册'}
+            </Text>
           </Pressable>
+
+          {/* Mode toggle */}
+          <Pressable onPress={() => { setMode(mode === 'signIn' ? 'signUp' : 'signIn'); setServerError(null); }}>
+            <Text style={styles.skipText}>
+              {mode === 'signIn' ? '没有账号？去注册' : '已有账号？去登录'}
+            </Text>
+          </Pressable>
+
+          {/* Anonymous skip */}
           <Pressable style={styles.skipBtn} onPress={() => router.back()}>
-            <Text style={styles.skipText}>先不登录,继续看视频</Text>
+            <Text style={styles.skipText}>先不登录，继续看视频</Text>
           </Pressable>
         </View>
       </KeyboardAvoidingView>
@@ -105,14 +164,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     borderWidth: 1, borderColor: colors.border,
   },
-  inputWrapError: { borderColor: colors.danger },
-  at: { color: colors.textMuted, fontSize: 18, fontWeight: '600', marginRight: 4 },
   input: { flex: 1, paddingVertical: spacing.md + 2, color: colors.text, ...typography.body, fontSize: 16 },
-  counter: { ...typography.tiny, color: colors.textDim, marginLeft: 4 },
 
   errorRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing.sm },
   errorText: { ...typography.caption, color: colors.danger },
-  hint: { ...typography.tiny, color: colors.textDim, paddingHorizontal: spacing.sm },
 
   button: {
     backgroundColor: colors.primary, paddingVertical: spacing.md + 2, borderRadius: radius.lg,
