@@ -9,6 +9,8 @@ import 'react-native-url-polyfill/auto';
 import { ToastHost } from '@/components/toast/Toast';
 import { ConfirmDialogHost } from '@/components/dialog/ConfirmDialog';
 import { preloadDemoVideos } from '@/ai/demoVideos';
+import { useAuth } from '@/store/auth';
+import { supabase, hasSupabase } from '@/api/client';
 
 // 保险:即使 RootLayout 抛错,也在 1.5s 后让 splash 消失,这样能看到红屏报错而不是空 logo。
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
@@ -31,6 +33,18 @@ export default function RootLayout() {
     SplashScreen.hideAsync().catch(() => undefined);
     // 预解析打包的 demo 视频资源,确保首帧/播放前 localUri 就绪。
     preloadDemoVideos().catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    useAuth.getState().hydrateSession();
+    if (!hasSupabase) return;
+    const { data: sub } = supabase().auth.onAuthStateChange((_event, session) => {
+      const u = session?.user;
+      useAuth.getState().setUserFromSession(
+        u ? { id: u.id, username: u.email?.split('@')[0] ?? 'user' } : null,
+      );
+    });
+    return () => sub.subscription.unsubscribe();
   }, []);
 
   return (

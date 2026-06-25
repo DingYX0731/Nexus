@@ -35,7 +35,7 @@ export default function SettingsScreen() {
     Alert.alert('退出登录?', '退出后将返回匿名状态。', [
       { text: '取消', style: 'cancel' },
       { text: '退出', style: 'destructive', onPress: () => {
-        signOut();
+        void signOut();
         router.back();
         showToast({ message: '已退出登录' });
       }},
