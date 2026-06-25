@@ -71,7 +71,7 @@ Deno.serve(async (req) => {
         video_url: '',
         ai_provider: 'doubao',
         status: 'generating',
-        visibility: 'public',
+        visibility: 'private',
         doubao_task_id: taskId,
       }).select('id').single();
       if (insErr) throw insErr;
