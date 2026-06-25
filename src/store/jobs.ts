@@ -13,6 +13,8 @@ import { useLocalVideos, makeNewVideo } from './videos';
 import { useAuth } from './auth';
 import { useCredits } from './credits';
 import { showToast } from '@/components/toast/Toast';
+import { hasSupabase } from '@/api/client';
+import { callGenerate } from '@/api/supabase/generateClient';
 
 export type JobKind = 'text_to_video' | 'continuation' | 'prompt_remix' | 'edit_publish';
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
@@ -96,6 +98,8 @@ function authorOfNew(): { id: string; username: string } {
   if (isAnonymous || !user) return { id: 'anon', username: '匿名用户' };
   return { id: user.id, username: user.username };
 }
+
+// ── 保底（本地 Mock）路径专用辅助函数 ──────────────────────────────────────
 
 async function runProviderText(rec: AiJobRecord, prompt: string) {
   useJobsStoreInternal.getState().patch(rec.id, { statusMsg: '提交任务到 AI Provider...' });
@@ -221,13 +225,41 @@ function fail(rec: AiJobRecord, err: any) {
     statusMsg: msg,
     finishedAt: Date.now(),
   });
-  // 失败/取消都退还额度。剪辑发布走 submitEditPublish,不进这个路径。
-  if (rec.ownerUserId !== 'anon' && rec.kind !== 'edit_publish') {
+  // 失败/取消都退还额度——仅保底模式在客户端扣减,Supabase 模式由 Edge Function 负责。
+  if (!hasSupabase && rec.ownerUserId !== 'anon' && rec.kind !== 'edit_publish') {
     useCredits.getState().refund(rec.ownerUserId);
   }
   if (!wasCancelled) {
     showToast({ message: `生成失败:${msg}`, durationMs: 4000 });
   }
+}
+
+// ── Supabase 路径辅助：单次 callGenerate，完成后入本地流 ──────────────────
+
+async function runWithSupabase(
+  rec: AiJobRecord,
+  generateArgs: Parameters<typeof callGenerate>[0],
+  parent?: Video,
+): Promise<void> {
+  useJobsStoreInternal.getState().patch(rec.id, { status: 'running', statusMsg: '正在生成,请稍候...' });
+  const video = await callGenerate(generateArgs);
+  // cancel guard:生成期间用户可能已取消
+  const cur = useJobsStoreInternal.getState().jobs.find((j) => j.id === rec.id);
+  if (!cur || cur.status === 'cancelled') return;
+  // 将 Supabase 返回的 Video 直接入本地 feed
+  useLocalVideos.getState().addVideo(video);
+  if (parent) useLocalVideos.getState().bumpStat(parent.id, 'fork_count');
+  useJobsStoreInternal.getState().patch(rec.id, {
+    status: 'succeeded',
+    statusMsg: '完成',
+    finishedAt: Date.now(),
+    finishedVideoId: video.id,
+  });
+  showToast({
+    message: '你的视频已生成',
+    actionLabel: '查看',
+    onAction: () => router.push(`/video/${video.id}`),
+  });
 }
 
 // 公开 API
@@ -245,15 +277,25 @@ export async function submitTextToVideo(opts: SubmitTextOptions): Promise<AiJobR
     createdAt: Date.now(),
   };
   useJobsStoreInternal.getState().add(rec);
-  (async () => {
-    try {
-      const externalJobId = await runProviderText(rec, opts.prompt);
-      const result = await pollUntilDone(rec, externalJobId);
-      finalize(rec, result);
-    } catch (e) {
-      fail(rec, e);
-    }
-  })();
+  if (hasSupabase) {
+    (async () => {
+      try {
+        await runWithSupabase(rec, { kind: 'text', prompt: opts.prompt, aspect: opts.aspect });
+      } catch (e) {
+        fail(rec, e);
+      }
+    })();
+  } else {
+    (async () => {
+      try {
+        const externalJobId = await runProviderText(rec, opts.prompt);
+        const result = await pollUntilDone(rec, externalJobId);
+        finalize(rec, result);
+      } catch (e) {
+        fail(rec, e);
+      }
+    })();
+  }
   return rec;
 }
 
@@ -272,15 +314,34 @@ export async function submitContinuation(opts: SubmitContinuationOptions): Promi
     createdAt: Date.now(),
   };
   useJobsStoreInternal.getState().add(rec);
-  (async () => {
-    try {
-      const externalJobId = await runProviderImage(rec, opts.parentVideo.tail_frame_url!, opts.prompt);
-      const result = await pollUntilDone(rec, externalJobId);
-      finalize(rec, result, opts.parentVideo);
-    } catch (e) {
-      fail(rec, e);
-    }
-  })();
+  if (hasSupabase) {
+    (async () => {
+      try {
+        await runWithSupabase(
+          rec,
+          {
+            kind: 'continuation',
+            prompt: opts.prompt,
+            parentId: opts.parentVideo.id,
+            parentTailFrameUrl: opts.parentVideo.tail_frame_url ?? undefined,
+          },
+          opts.parentVideo,
+        );
+      } catch (e) {
+        fail(rec, e);
+      }
+    })();
+  } else {
+    (async () => {
+      try {
+        const externalJobId = await runProviderImage(rec, opts.parentVideo.tail_frame_url!, opts.prompt);
+        const result = await pollUntilDone(rec, externalJobId);
+        finalize(rec, result, opts.parentVideo);
+      } catch (e) {
+        fail(rec, e);
+      }
+    })();
+  }
   return rec;
 }
 
@@ -298,15 +359,29 @@ export async function submitRemix(opts: SubmitRemixOptions): Promise<AiJobRecord
     createdAt: Date.now(),
   };
   useJobsStoreInternal.getState().add(rec);
-  (async () => {
-    try {
-      const externalJobId = await runProviderText(rec, opts.prompt);
-      const result = await pollUntilDone(rec, externalJobId);
-      finalize(rec, result, opts.parentVideo);
-    } catch (e) {
-      fail(rec, e);
-    }
-  })();
+  if (hasSupabase) {
+    (async () => {
+      try {
+        await runWithSupabase(
+          rec,
+          { kind: 'remix', prompt: opts.prompt, parentId: opts.parentVideo.id },
+          opts.parentVideo,
+        );
+      } catch (e) {
+        fail(rec, e);
+      }
+    })();
+  } else {
+    (async () => {
+      try {
+        const externalJobId = await runProviderText(rec, opts.prompt);
+        const result = await pollUntilDone(rec, externalJobId);
+        finalize(rec, result, opts.parentVideo);
+      } catch (e) {
+        fail(rec, e);
+      }
+    })();
+  }
   return rec;
 }
 
