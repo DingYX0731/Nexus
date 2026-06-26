@@ -34,6 +34,14 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const { kind, prompt, parentTailFrameUrl, parentId, aspect } = body;
 
+    // Prompt 输入校验（在扣额度之前，避免无效请求也扣额度）
+    if (!prompt || !String(prompt).trim()) {
+      return json({ error: 'prompt 不能为空' }, 400);
+    }
+    if (String(prompt).length > 2000) {
+      return json({ error: 'prompt 过长' }, 400);
+    }
+
     // 1. 读余额 + 扣（service role，绕过 RLS）
     const { data: cRow } = await admin
       .from('credits').select('balance').eq('user_id', user.id).maybeSingle();
