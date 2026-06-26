@@ -78,10 +78,8 @@ export async function toggleLikeRemote(videoId: string, userId: string | null): 
 }
 
 export async function recordPlayRemote(videoId: string): Promise<void> {
-  // 直接 +1：用 rpc 或读改写。MVP 用读改写（弱一致可接受）。
-  const { data } = await supabase().from('videos').select('play_count').eq('id', videoId).maybeSingle();
-  const cur = (data?.play_count as number | undefined) ?? 0;
-  await supabase().from('videos').update({ play_count: cur + 1 }).eq('id', videoId);
+  // 用 SECURITY DEFINER rpc 原子自增：绕过 RLS(可计他人公开视频)，且 +1 原子无并发丢失。
+  await supabase().rpc('increment_play_count', { p_video_id: videoId });
 }
 
 export async function setVisibilityRemote(id: string, vis: 'public' | 'private'): Promise<void> {

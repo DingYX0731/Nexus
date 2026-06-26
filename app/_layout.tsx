@@ -31,9 +31,12 @@ export default function RootLayout() {
     if (!hasSupabase) return;
     const { data: sub } = supabase().auth.onAuthStateChange((_event, session) => {
       const u = session?.user;
-      useAuth.getState().setUserFromSession(
-        u ? { id: u.id, username: u.email?.split('@')[0] ?? 'user' } : null,
-      );
+      if (u) {
+        // 查 profiles 拿真实 username，避免用 email 前缀覆盖（token 刷新/多设备时会触发）
+        useAuth.getState().hydrateSession();
+      } else {
+        useAuth.getState().setUserFromSession(null);
+      }
     });
     return () => sub.subscription.unsubscribe();
   }, []);

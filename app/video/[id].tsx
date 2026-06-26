@@ -47,7 +47,10 @@ export default function VideoDetail() {
 
   const likeMut = useMutation({
     mutationFn: () => toggleLike(id!, user?.id ?? null),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['video', id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['video', id] });
+      qc.invalidateQueries({ queryKey: ['feed'] });
+    },
   });
 
   const visibilityMut = useMutation({
