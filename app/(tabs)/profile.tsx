@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, FlatList, Pressable, Share } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Pressable, Share, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useMemo, useEffect } from 'react';
@@ -11,7 +11,6 @@ import { listMyVideos } from '@/api/videos';
 import { hasSupabase } from '@/api/client';
 import { useTabBarSpace } from '@/hooks/useTabBarSpace';
 import { useVideoThumbnail } from '@/hooks/useVideoThumbnail';
-import { Image } from 'react-native';
 import type { Video } from '@/api/types';
 import { LoadingState, ErrorState, EmptyState } from '@/components/ui/ScreenState';
 import { UserAvatar } from '@/components/ui/UserAvatar';
