@@ -2,7 +2,8 @@ import { useState, useMemo, useEffect } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet, Alert, ScrollView, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Sparkles, Wand2, Lock, Coins, Clock, CheckCircle2, XCircle, ChevronRight } from 'lucide-react-native';
+import { Sparkles, Wand2, Lock, Clock, CheckCircle2, XCircle, ChevronRight } from 'lucide-react-native';
+import { CreditsDisplay } from '@/components/ui/CreditsDisplay';
 import { colors, radius, spacing, typography } from '@/theme';
 import { defaultProvider } from '@/ai/VideoGenProvider';
 import { useTabBarSpace } from '@/hooks/useTabBarSpace';
@@ -123,8 +124,7 @@ function CreateAuthed({ userId, username, contentBottomPad }:
               <Wand2 color={colors.primary} size={24} />
             </View>
             <View style={styles.creditsChip}>
-              <Coins color={colors.warning} size={14} />
-              <Text style={styles.creditsText}>{credits} 额度</Text>
+              <CreditsDisplay />
             </View>
           </View>
           <Text style={styles.title}>用 AI 生成短视频</Text>
@@ -260,7 +260,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface, borderRadius: radius.pill,
     borderWidth: 1, borderColor: colors.border,
   },
-  creditsText: { ...typography.captionStrong, color: colors.text },
 
   title: { ...typography.h1, color: colors.text },
   sub: { ...typography.body, color: colors.textMuted },
