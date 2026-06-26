@@ -35,10 +35,13 @@ Deno.serve(async (req) => {
     const { kind, prompt, parentTailFrameUrl, parentId, aspect } = body;
 
     // Prompt 输入校验（在扣额度之前，避免无效请求也扣额度）
-    if (!prompt || !String(prompt).trim()) {
+    if (typeof prompt !== 'string') {
+      return json({ error: 'prompt 必须是字符串' }, 400);
+    }
+    if (!prompt.trim()) {
       return json({ error: 'prompt 不能为空' }, 400);
     }
-    if (String(prompt).length > 2000) {
+    if (prompt.length > 2000) {
       return json({ error: 'prompt 过长' }, 400);
     }
 
