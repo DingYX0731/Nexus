@@ -8,6 +8,7 @@ import { defaultProvider } from '@/ai/VideoGenProvider';
 import { useTabBarSpace } from '@/hooks/useTabBarSpace';
 import { useAuth } from '@/store/auth';
 import { useCredits, COST_GENERATION } from '@/store/credits';
+import { hasSupabase } from '@/api/client';
 import { useJobs, submitTextToVideo, type AiJobRecord } from '@/store/jobs';
 import { showToast } from '@/components/toast/Toast';
 
@@ -63,12 +64,19 @@ function CreateAuthed({ userId, username, contentBottomPad }:
   // 也不要 useJobs((s) => s.visibleFor(userId))(每次返回新数组 → getSnapshot 不稳定)。
   const creditsMap = useCredits((s) => s.byUser);
   const ensureCreditsInit = useCredits((s) => s.ensureInit);
+  const syncRemote = useCredits((s) => s.syncRemote);
   const charge = useCredits((s) => s.charge);
   const refund = useCredits((s) => s.refund);
 
   const allJobs = useJobs((s) => s.jobs);
 
-  useEffect(() => { ensureCreditsInit(userId); }, [userId, ensureCreditsInit]);
+  useEffect(() => {
+    if (hasSupabase) {
+      void syncRemote(userId);
+    } else {
+      ensureCreditsInit(userId);
+    }
+  }, [userId, ensureCreditsInit, syncRemote]);
 
   const credits = creditsMap[userId] ?? 5; // ensureInit 之前先用默认值,避免 0 闪一下
   const myJobs = useMemo(

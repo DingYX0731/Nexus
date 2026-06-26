@@ -8,9 +8,11 @@
     "scheme": "aishorts",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.aishorts.app"
     },
     "android": {
+      "package": "com.aishorts.app",
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",

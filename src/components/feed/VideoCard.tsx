@@ -5,12 +5,13 @@ import { Heart, GitBranch, Scissors, MessageCircle, Share2 } from 'lucide-react-
 import Animated, {
   useSharedValue, useAnimatedStyle, withSpring, withSequence,
 } from 'react-native-reanimated';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { Video } from '@/api/types';
+import { toggleLike as daoToggleLike } from '@/api/videos';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { CommentsSheet } from '@/components/comments/CommentsSheet';
 import { showAuthRequired } from '@/components/dialog/ConfirmDialog';
 import { useAuth } from '@/store/auth';
-import { useLocalVideos } from '@/store/videos';
 import { useComments } from '@/store/comments';
 import { useTabBarSpace } from '@/hooks/useTabBarSpace';
 import { colors, spacing, typography } from '@/theme';
@@ -19,7 +20,6 @@ export function VideoCard({ video, isActive }: { video: Video; isActive: boolean
   const router = useRouter();
   const { tabBarHeight } = useTabBarSpace();
   const { user } = useAuth();
-  const toggleLike = useLocalVideos((s) => s.toggleLike);
   const ensureSeeded = useComments((s) => s.ensureSeeded);
   const commentList = useComments((s) => s.byVideo[video.id]);
   const commentCount = commentList?.length ?? 0;
@@ -32,18 +32,31 @@ export function VideoCard({ video, isActive }: { video: Video; isActive: boolean
   const heartScale = useSharedValue(1);
   const heartStyle = useAnimatedStyle(() => ({ transform: [{ scale: heartScale.value }] }));
 
+  const qc = useQueryClient();
+  const likeMut = useMutation({
+    mutationFn: () => daoToggleLike(video.id, user?.id ?? null),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['feed'] });
+      qc.invalidateQueries({ queryKey: ['video', video.id] });
+    },
+    onError: () => {
+      qc.invalidateQueries({ queryKey: ['feed'] });
+    },
+  });
+
   const onLike = () => {
     if (!user) {
       showAuthRequired('登录后即可点赞,留下你的足迹 ❤️', () => router.push('/auth/login'));
       return;
     }
-    const becameLiked = toggleLike(video.id, user.id);
-    if (becameLiked) {
+    // 保留点赞动画（乐观）
+    if (!video.is_liked) {
       heartScale.value = withSequence(
         withSpring(1.35, { damping: 6, stiffness: 320 }),
         withSpring(1, { damping: 10, stiffness: 220 }),
       );
     }
+    likeMut.mutate();
   };
   const onRemix = () => {
     if (!user) {

@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, GitBranch, Scissors, Heart, MessageCircle, Share2, Home, Info, Globe, Lock, Trash2 } from 'lucide-react-native';
 import { useState } from 'react';
-import { getVideo, getVersionTree, toggleLike, type VersionNode } from '@/api/videos';
+import { getVideo, getVersionTree, toggleLike, setVisibility as daoSetVisibility, deleteVideo as daoDeleteVideo, type VersionNode } from '@/api/videos';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { CommentsSheet } from '@/components/comments/CommentsSheet';
 import { useComments } from '@/store/comments';
@@ -13,6 +13,7 @@ import { showToast } from '@/components/toast/Toast';
 import { showAuthRequired } from '@/components/dialog/ConfirmDialog';
 import { colors, radius, spacing, typography } from '@/theme';
 import { useAuth } from '@/store/auth';
+import { hasSupabase } from '@/api/client';
 
 export default function VideoDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -23,11 +24,19 @@ export default function VideoDetail() {
   const commentList = useComments((s) => s.byVideo[id ?? '']);
   const commentCount = commentList?.length ?? 0;
 
-  // 直接订阅 zustand:发布/删除/点赞后立即反映,react-query 不知道本地变化
-  const allVideos = useLocalVideos((s) => s.videos);
-  const setVisibility = useLocalVideos((s) => s.setVisibility);
-  const deleteVideo = useLocalVideos((s) => s.deleteVideo);
-  const video = allVideos.find((v) => v.id === id);
+  // ── Supabase 路径：useQuery 从云端读单视频 ──────────────────────────────────
+  const { data: remoteVideo } = useQuery({
+    queryKey: ['video', id],
+    queryFn: () => getVideo(id!),
+    enabled: hasSupabase && !!id,
+  });
+
+  // ── 本地保底路径：订阅 Zustand（乐观更新来源） ──────────────────────────────
+  const allLocalVideos = useLocalVideos((s) => s.videos);
+  const localVideo = allLocalVideos.find((v) => v.id === id);
+
+  // 优先云端数据；本地 Zustand 用作乐观 fallback（hasSupabase=false 时的唯一来源）
+  const video = hasSupabase ? (remoteVideo ?? localVideo) : localVideo;
   const isOwner = !!user && !!video && video.author_id === user.id;
 
   const { data: tree = [] } = useQuery({
@@ -38,11 +47,36 @@ export default function VideoDetail() {
 
   const likeMut = useMutation({
     mutationFn: () => toggleLike(id!, user?.id ?? null),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['video', id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['video', id] });
+      qc.invalidateQueries({ queryKey: ['feed'] });
+    },
   });
 
-  // 智能返回:如果有 navigation 栈就 back,否则回 Feed Tab。
-  // 这避免了从 Create → push(video) 之后再 back 回不去的问题。
+  const visibilityMut = useMutation({
+    mutationFn: (vis: 'public' | 'private') => daoSetVisibility(id!, vis),
+    onSuccess: (_data, vis) => {
+      // 乐观更新本地 store（非 Supabase 模式或 Supabase 模式下的即时 UI 响应）
+      useLocalVideos.getState().setVisibility(id!, vis);
+      qc.invalidateQueries({ queryKey: ['video', id] });
+      qc.invalidateQueries({ queryKey: ['feed'] });
+      qc.invalidateQueries({ queryKey: ['myVideos', user?.id] });
+    },
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: () => daoDeleteVideo(id!),
+    onSuccess: () => {
+      useLocalVideos.getState().deleteVideo(id!);
+      qc.invalidateQueries({ queryKey: ['feed'] });
+      qc.invalidateQueries({ queryKey: ['myVideos', user?.id] });
+      showToast({ message: '视频已删除' });
+      if (router.canGoBack()) router.back();
+      else router.replace('/(tabs)');
+    },
+  });
+
+  // 智能返回：如果有 navigation 栈就 back，否则回 Feed Tab。
   const onBack = () => {
     if (router.canGoBack()) router.back();
     else router.replace('/(tabs)');
@@ -89,10 +123,10 @@ export default function VideoDetail() {
             <Pressable style={styles.kindBadge} hitSlop={6} onPress={() => Alert.alert(
               kindLabel(video.remix_kind!),
               video.remix_kind === 'continuation'
-                ? '续写:以原视频最后一帧为起点,生成新一段画面,叙事接力。'
+                ? '续写：以原视频最后一帧为起点，生成新一段画面，叙事接力。'
                 : video.remix_kind === 'prompt_remix'
-                ? 'Remix:基于原视频主题,用新的 prompt 重新生成,呈现不同风格。'
-                : '剪辑:对原视频做非破坏性编辑(字幕/滤镜),无需重新生成。',
+                ? 'Remix：基于原视频主题，用新的 prompt 重新生成，呈现不同风格。'
+                : '剪辑：对原视频做非破坏性编辑（字幕/滤镜），无需重新生成。',
             )}>
               <GitBranch color={colors.accent} size={11} />
               <Text style={styles.kindText}>{kindLabel(video.remix_kind)}</Text>
@@ -120,15 +154,15 @@ export default function VideoDetail() {
           </View>
         </View>
 
-        {/* 作者本人操作:发布/取消发布、删除 */}
+        {/* 作者本人操作：发布/取消发布、删除 */}
         {isOwner && (
           <View style={styles.ownerActions}>
             {video.visibility === 'public' ? (
               <Pressable
                 style={styles.ownerBtn}
                 onPress={() => {
-                  setVisibility(video.id, 'private');
-                  showToast({ message: '已设为草稿,从 Feed 隐藏' });
+                  visibilityMut.mutate('private');
+                  showToast({ message: '已设为草稿，从 Feed 隐藏' });
                 }}
               >
                 <Lock color={colors.text} size={16} />
@@ -138,8 +172,8 @@ export default function VideoDetail() {
               <Pressable
                 style={[styles.ownerBtn, styles.ownerBtnPrimary]}
                 onPress={() => {
-                  setVisibility(video.id, 'public');
-                  showToast({ message: '已发布,所有人都能看到', actionLabel: '去 Feed', onAction: () => router.replace('/(tabs)') });
+                  visibilityMut.mutate('public');
+                  showToast({ message: '已发布，所有人都能看到', actionLabel: '去 Feed', onAction: () => router.replace('/(tabs)') });
                 }}
               >
                 <Globe color="#fff" size={16} />
@@ -149,14 +183,11 @@ export default function VideoDetail() {
             <Pressable
               style={[styles.ownerBtn, styles.ownerBtnDanger]}
               onPress={() => {
-                Alert.alert('删除这条视频?', '此操作不可撤销', [
+                Alert.alert('删除这条视频？', '此操作不可撤销', [
                   { text: '取消', style: 'cancel' },
                   {
                     text: '删除', style: 'destructive', onPress: () => {
-                      deleteVideo(video.id);
-                      showToast({ message: '视频已删除' });
-                      if (router.canGoBack()) router.back();
-                      else router.replace('/(tabs)');
+                      deleteMut.mutate();
                     },
                   },
                 ]);
@@ -210,7 +241,7 @@ export default function VideoDetail() {
             icon={<Share2 color={colors.text} size={22} strokeWidth={1.8} />}
             label="分享"
             onPress={() => {
-              Share.share({ message: `在 AI Shorts 看到一条不错的视频:${video.prompt}` }).catch(() => undefined);
+              Share.share({ message: `在 AI Shorts 看到一条不错的视频：${video.prompt}` }).catch(() => undefined);
             }}
           />
         </View>

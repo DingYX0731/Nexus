@@ -3,9 +3,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useMemo, useEffect } from 'react';
 import { Settings, Share2, Lock } from 'lucide-react-native';
+import { useQuery } from '@tanstack/react-query';
 import { colors, radius, spacing, typography } from '@/theme';
 import { useAuth } from '@/store/auth';
 import { useLocalVideos } from '@/store/videos';
+import { listMyVideos } from '@/api/videos';
+import { hasSupabase } from '@/api/client';
 import { useTabBarSpace } from '@/hooks/useTabBarSpace';
 import { useVideoThumbnail } from '@/hooks/useVideoThumbnail';
 import type { Video } from '@/api/types';
@@ -14,15 +17,28 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { user, isAnonymous } = useAuth();
   const { contentBottomPad } = useTabBarSpace();
-  // 关键修复:直接订阅 zustand,而不是用 useQuery —— react-query 不知道本地 store 何时变了。
-  const allVideos = useLocalVideos((s) => s.videos);
-  const hydrate = useLocalVideos((s) => s.hydrate);
-  useEffect(() => { hydrate(); }, [hydrate]);
 
-  const videos = useMemo(
-    () => user ? allVideos.filter((v) => v.author_id === user.id) : [],
-    [allVideos, user?.id],
+  // ── Supabase 路径：react-query 从云端读本人所有视频（含草稿） ──────────────
+  const { data: remoteVideos = [] } = useQuery({
+    queryKey: ['myVideos', user?.id],
+    queryFn: () => listMyVideos(user?.id),
+    enabled: hasSupabase && !!user && !isAnonymous,
+  });
+
+  // ── 本地保底路径 ────────────────────────────────────────────────────────────
+  const allLocalVideos = useLocalVideos((s) => s.videos);
+  const hydrate = useLocalVideos((s) => s.hydrate);
+  useEffect(() => {
+    if (!hasSupabase) hydrate();
+  }, [hydrate]);
+
+  const localVideos = useMemo(
+    () => (user && !hasSupabase) ? allLocalVideos.filter((v) => v.author_id === user.id) : [],
+    [allLocalVideos, user?.id],
   );
+
+  // ── 统一出口 ────────────────────────────────────────────────────────────────
+  const videos = hasSupabase ? remoteVideos : localVideos;
 
   const totals = videos.reduce(
     (acc, v) => ({
@@ -124,7 +140,6 @@ function Divider() {
 }
 
 function Thumb({ video, onPress }: { video: Video; onPress: () => void }) {
-  // 没有 thumbnail_url 时(豆包等)用首帧抽帧 fallback
   const thumb = useVideoThumbnail(
     !video.thumbnail_url ? video.video_url : undefined,
     video.thumbnail_url ?? null,

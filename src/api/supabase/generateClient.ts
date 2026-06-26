@@ -1,0 +1,57 @@
+import { supabase } from '@/api/client';
+import type { Video } from '@/api/types';
+import { getVideoRow } from './videosRepo';
+
+export interface GenerateArgs {
+  kind: 'text' | 'continuation' | 'remix';
+  prompt: string;
+  parentTailFrameUrl?: string;
+  parentId?: string;
+  aspect?: '9:16' | '16:9';
+}
+
+interface StartResp { videoId?: string; status?: string; error?: string }
+interface PollResp { status?: 'generating' | 'ready' | 'failed'; error?: string }
+
+const POLL_INTERVAL_MS = 4000;
+const POLL_TIMEOUT_MS = 240_000; // 客户端总等待上限 4 分钟
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * 异步两段式：先调 generate-video 发起任务拿 videoId，再轮询 poll-video 直到 ready/failed。
+ * 对外仍返回最终 Video（保持调用方签名不变）。额度扣减/退还全在 Edge Function 服务端完成。
+ */
+export async function callGenerate(args: GenerateArgs): Promise<Video> {
+  // 1. 发起
+  const { data: startData, error: startErr } =
+    await supabase().functions.invoke('generate-video', { body: args });
+  if (startErr) throw new Error(startErr.message);
+  const start = startData as StartResp;
+  if (start.error) throw new Error(start.error);
+  if (!start.videoId) throw new Error('发起生成失败：缺少 videoId');
+
+  const videoId = start.videoId;
+
+  // 2. 轮询 poll-video
+  const deadline = Date.now() + POLL_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await sleep(POLL_INTERVAL_MS);
+    const { data: pollData, error: pollErr } =
+      await supabase().functions.invoke('poll-video', { body: { videoId } });
+    if (pollErr) throw new Error(pollErr.message);
+    const poll = pollData as PollResp;
+    if (poll.status === 'ready') {
+      const video = await getVideoRow(videoId);
+      if (!video) throw new Error('生成完成但读取视频失败');
+      return video;
+    }
+    if (poll.status === 'failed') {
+      throw new Error(poll.error ?? 'AI 生成失败');
+    }
+    // generating → 继续轮询
+  }
+  throw new Error('生成超时，请稍后在个人页查看');
+}

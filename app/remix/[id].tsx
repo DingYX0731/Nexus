@@ -9,6 +9,7 @@ import { colors, radius, spacing, typography } from '@/theme';
 import { useAuth } from '@/store/auth';
 import { useCredits, COST_GENERATION } from '@/store/credits';
 import { submitContinuation, submitRemix } from '@/store/jobs';
+import { hasSupabase } from '@/api/client';
 
 type Mode = 'continuation' | 'prompt_remix';
 
@@ -21,10 +22,19 @@ export default function RemixScreen() {
   // 同 Create 页:从 byUser 读纯数据,避免 selector 内 setState 触发循环
   const creditsMap = useCredits((s) => s.byUser);
   const ensureCreditsInit = useCredits((s) => s.ensureInit);
+  const syncRemote = useCredits((s) => s.syncRemote);
   const charge = useCredits((s) => s.charge);
   const refund = useCredits((s) => s.refund);
   const credits = user ? (creditsMap[user.id] ?? 5) : 0;
-  useEffect(() => { if (user) ensureCreditsInit(user.id); }, [user, ensureCreditsInit]);
+  useEffect(() => {
+    if (user) {
+      if (hasSupabase) {
+        void syncRemote(user.id);
+      } else {
+        ensureCreditsInit(user.id);
+      }
+    }
+  }, [user, ensureCreditsInit, syncRemote]);
 
   const { data: source } = useQuery({
     queryKey: ['video', id],

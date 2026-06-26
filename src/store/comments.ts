@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { hasSupabase } from '@/api/client';
+import { listCommentsRemote, addCommentRemote } from '@/api/supabase/commentsRepo';
 
 export interface Comment {
   id: string;
@@ -12,12 +14,13 @@ export interface Comment {
   liked: boolean;
   parentId: string | null;
   replyCount: number;
+  replyToName?: string | null;
 }
 
 interface CommentsStore {
   byVideo: Record<string, Comment[]>;
   ensureSeeded: (videoId: string) => void;
-  add: (videoId: string, text: string, parentId: string | null, author: { id: string; name: string }) => Comment;
+  add: (videoId: string, text: string, parentId: string | null, author: { id: string; name: string }, replyToName?: string | null) => Comment;
   toggleLike: (videoId: string, commentId: string) => void;
 }
 
@@ -96,9 +99,23 @@ export const useComments = create<CommentsStore>((set, get) => ({
   byVideo: {},
   ensureSeeded: (videoId) => {
     if (get().byVideo[videoId]) return;
-    set((s) => ({ byVideo: { ...s.byVideo, [videoId]: seedFor(videoId) } }));
+    if (hasSupabase) {
+      // Kick off async fetch; populate byVideo when resolved
+      listCommentsRemote(videoId)
+        .then((comments) => {
+          set((s) => ({ byVideo: { ...s.byVideo, [videoId]: comments } }));
+        })
+        .catch(() => {
+          // Fallback to local seed on error
+          set((s) => ({ byVideo: { ...s.byVideo, [videoId]: seedFor(videoId) } }));
+        });
+      // Optimistically set empty array so we don't re-trigger while fetching
+      set((s) => ({ byVideo: { ...s.byVideo, [videoId]: s.byVideo[videoId] ?? [] } }));
+    } else {
+      set((s) => ({ byVideo: { ...s.byVideo, [videoId]: seedFor(videoId) } }));
+    }
   },
-  add: (videoId, text, parentId, author) => {
+  add: (videoId, text, parentId, author, replyToName) => {
     const c: Comment = {
       id: nextId(),
       videoId,
@@ -111,7 +128,26 @@ export const useComments = create<CommentsStore>((set, get) => ({
       liked: false,
       parentId,
       replyCount: 0,
+      replyToName: replyToName ?? null,
     };
+    if (hasSupabase) {
+      addCommentRemote(videoId, text, author.id, parentId, replyToName ?? null)
+        .then((remote) => {
+          set((s) => {
+            const cur = s.byVideo[videoId] ?? [];
+            // Replace the optimistic entry with the remote one
+            const withoutOptimistic = cur.filter((x) => x.id !== c.id);
+            const next = parentId
+              ? withoutOptimistic.concat(remote)
+              : [remote, ...withoutOptimistic];
+            return { byVideo: { ...s.byVideo, [videoId]: next } };
+          });
+        })
+        .catch(() => {
+          // Keep the optimistic local entry on error (already added below)
+        });
+    }
+    // Optimistically add locally (so UI is immediate)
     set((s) => {
       const cur = s.byVideo[videoId] ?? [];
       const next = parentId

@@ -2,6 +2,10 @@ import type { EditMetadata, VersionNode, Video } from './types';
 import { useLocalVideos, makeNewVideo } from '@/store/videos';
 import { useAuth } from '@/store/auth';
 import { defaultProvider } from '@/ai/VideoGenProvider';
+import { hasSupabase } from '@/api/client';
+import * as repo from '@/api/supabase/videosRepo';
+import * as commentsRepo from '@/api/supabase/commentsRepo';
+import { callGenerate } from '@/api/supabase/generateClient';
 
 export type { Video, VersionNode } from './types';
 
@@ -48,23 +52,26 @@ function authorOfNew(): { id: string | null; username: string } {
 }
 
 export async function listFeed(): Promise<Video[]> {
+  if (hasSupabase) return repo.listFeedRows();
   snapshot().hydrate();
-  const list = snapshot().videos;
-  return [...list].sort((a, b) => b.created_at.localeCompare(a.created_at));
+  return [...snapshot().videos].sort((a, b) => b.created_at.localeCompare(a.created_at));
 }
 
 export async function listMyVideos(userId: string | null | undefined): Promise<Video[]> {
+  if (hasSupabase) return repo.listMyVideoRows(userId);
   snapshot().hydrate();
   if (!userId) return [];
   return snapshot().videos.filter((v) => v.author_id === userId);
 }
 
 export async function getVideo(id: string): Promise<Video | null> {
+  if (hasSupabase) return repo.getVideoRow(id);
   snapshot().hydrate();
   return snapshot().videos.find((v) => v.id === id) ?? null;
 }
 
 export async function getVersionTree(rootId: string): Promise<VersionNode[]> {
+  if (hasSupabase) return repo.getVersionTreeRows(rootId);
   snapshot().hydrate();
   const all = snapshot().videos.filter((v) => v.root_id === rootId);
   return all
@@ -87,6 +94,10 @@ export async function generateVideo(input: {
   aspect?: '9:16' | '16:9';
   onProgress?: (status: string) => void;
 }): Promise<Video> {
+  if (hasSupabase) {
+    input.onProgress?.('running');
+    return callGenerate({ kind: 'text', prompt: input.prompt, aspect: input.aspect });
+  }
   const { jobId } = await defaultProvider.textToVideo({ prompt: input.prompt, aspect: input.aspect });
   const result = await waitForJob(jobId, { onProgress: input.onProgress });
   const author = authorOfNew();
@@ -102,6 +113,16 @@ export async function generateVideo(input: {
 }
 
 export async function continueVideo(input: { parentId: string; prompt: string }): Promise<Video> {
+  if (hasSupabase) {
+    const parent = await getVideo(input.parentId);
+    if (!parent) throw new Error('源视频未找到');
+    return callGenerate({
+      kind: 'continuation',
+      prompt: input.prompt,
+      parentId: input.parentId,
+      parentTailFrameUrl: parent.tail_frame_url ?? undefined,
+    });
+  }
   const parent = await getVideo(input.parentId);
   if (!parent) throw new Error('源视频未找到');
   if (!parent.tail_frame_url) throw new Error('源视频缺少尾帧,无法续写');
@@ -126,6 +147,9 @@ export async function continueVideo(input: { parentId: string; prompt: string })
 }
 
 export async function remixVideo(input: { parentId: string; prompt: string }): Promise<Video> {
+  if (hasSupabase) {
+    return callGenerate({ kind: 'remix', prompt: input.prompt, parentId: input.parentId });
+  }
   const parent = await getVideo(input.parentId);
   if (!parent) throw new Error('源视频未找到');
   const { jobId } = await defaultProvider.textToVideo({ prompt: input.prompt });
@@ -146,6 +170,29 @@ export async function remixVideo(input: { parentId: string; prompt: string }): P
 }
 
 export async function publishEdit(input: { parentId: string; editMetadata: EditMetadata }): Promise<Video> {
+  if (hasSupabase) {
+    const parent = await getVideo(input.parentId);
+    if (!parent) throw new Error('源视频未找到');
+    const author = authorOfNew();
+    if (!author.id) throw new Error('请先登录再发布编辑');
+    return repo.insertVideoRow({
+      authorId: author.id,
+      prompt: parent.prompt,
+      parentId: parent.id,
+      rootId: parent.root_id,
+      depth: parent.depth + 1,
+      remixKind: 'edit',
+      videoUrl: parent.video_url,
+      thumbnailUrl: parent.thumbnail_url ?? null,
+      tailFrameUrl: parent.tail_frame_url ?? null,
+      durationMs: parent.duration_ms ?? null,
+      width: parent.width ?? null,
+      height: parent.height ?? null,
+      aiProvider: parent.ai_provider ?? null,
+      editMetadata: input.editMetadata,
+      visibility: 'public',
+    });
+  }
   const parent = await getVideo(input.parentId);
   if (!parent) throw new Error('源视频未找到');
   const author = authorOfNew();
@@ -170,9 +217,21 @@ export async function publishEdit(input: { parentId: string; editMetadata: EditM
 }
 
 export async function toggleLike(videoId: string, userId: string | null): Promise<boolean> {
+  if (hasSupabase) return repo.toggleLikeRemote(videoId, userId);
   return snapshot().toggleLike(videoId, userId);
 }
 
 export async function recordPlay(videoId: string): Promise<void> {
+  if (hasSupabase) return repo.recordPlayRemote(videoId);
   snapshot().bumpStat(videoId, 'play_count');
+}
+
+export async function setVisibility(videoId: string, vis: 'public' | 'private'): Promise<void> {
+  if (hasSupabase) return repo.setVisibilityRemote(videoId, vis);
+  useLocalVideos.getState().setVisibility(videoId, vis);
+}
+
+export async function deleteVideo(videoId: string): Promise<void> {
+  if (hasSupabase) return repo.deleteVideoRemote(videoId);
+  useLocalVideos.getState().deleteVideo(videoId);
 }

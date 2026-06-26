@@ -9,6 +9,7 @@ import { useEffect } from 'react';
 import { colors, radius, spacing, typography } from '@/theme';
 import { useAuth } from '@/store/auth';
 import { useCredits, FREE_INITIAL_CREDITS } from '@/store/credits';
+import { hasSupabase } from '@/api/client';
 import { useLocalVideos } from '@/store/videos';
 import { defaultProvider } from '@/ai/VideoGenProvider';
 import { showToast } from '@/components/toast/Toast';
@@ -24,10 +25,19 @@ export default function SettingsScreen() {
   const { user, isAnonymous, signOut } = useAuth();
   const creditsMap = useCredits((s) => s.byUser);
   const ensureCreditsInit = useCredits((s) => s.ensureInit);
+  const syncRemote = useCredits((s) => s.syncRemote);
   const grant = useCredits((s) => s.grant);
   const videos = useLocalVideos((s) => s.videos);
 
-  useEffect(() => { if (user) ensureCreditsInit(user.id); }, [user, ensureCreditsInit]);
+  useEffect(() => {
+    if (user) {
+      if (hasSupabase) {
+        void syncRemote(user.id);
+      } else {
+        ensureCreditsInit(user.id);
+      }
+    }
+  }, [user, ensureCreditsInit, syncRemote]);
   const credits = user ? (creditsMap[user.id] ?? FREE_INITIAL_CREDITS) : 0;
   const myVideoCount = user ? videos.filter((v) => v.author_id === user.id).length : 0;
 
@@ -35,7 +45,7 @@ export default function SettingsScreen() {
     Alert.alert('退出登录?', '退出后将返回匿名状态。', [
       { text: '取消', style: 'cancel' },
       { text: '退出', style: 'destructive', onPress: () => {
-        signOut();
+        void signOut();
         router.back();
         showToast({ message: '已退出登录' });
       }},
