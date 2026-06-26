@@ -136,7 +136,7 @@ export const useComments = create<CommentsStore>((set, get) => ({
             // Replace the optimistic entry with the remote one
             const withoutOptimistic = cur.filter((x) => x.id !== c.id);
             const next = parentId
-              ? withoutOptimistic.map((x) => (x.id === parentId ? { ...x, replyCount: x.replyCount + 1 } : x)).concat(remote)
+              ? withoutOptimistic.concat(remote)
               : [remote, ...withoutOptimistic];
             return { byVideo: { ...s.byVideo, [videoId]: next } };
           });

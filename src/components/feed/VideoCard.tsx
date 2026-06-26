@@ -37,6 +37,10 @@ export function VideoCard({ video, isActive }: { video: Video; isActive: boolean
     mutationFn: () => daoToggleLike(video.id, user?.id ?? null),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['feed'] });
+      qc.invalidateQueries({ queryKey: ['video', video.id] });
+    },
+    onError: () => {
+      qc.invalidateQueries({ queryKey: ['feed'] });
     },
   });
 
