@@ -24,7 +24,7 @@ function withLiked(videos: Video[], liked: Set<string>): Video[] {
 export async function listFeedRows(): Promise<Video[]> {
   const { data, error } = await supabase()
     .from('video_with_stats').select(SELECT)
-    .eq('visibility', 'public').eq('status', 'ready').order('created_at', { ascending: false });
+    .eq('visibility', 'public').eq('status', 'ready').neq('video_url', '').order('created_at', { ascending: false });
   if (error) throw error;
   const videos = (data as VideoWithStatsRow[]).map(rowToVideo);
   return withLiked(videos, await likedSet(currentUserId(), videos.map((v) => v.id)));
@@ -34,7 +34,7 @@ export async function listMyVideoRows(userId: string | null | undefined): Promis
   if (!userId) return [];
   const { data, error } = await supabase()
     .from('video_with_stats').select(SELECT)
-    .eq('author_id', userId).order('created_at', { ascending: false });
+    .eq('author_id', userId).neq('video_url', '').order('created_at', { ascending: false });
   if (error) throw error;
   const videos = (data as VideoWithStatsRow[]).map(rowToVideo);
   return withLiked(videos, await likedSet(userId, videos.map((v) => v.id)));
