@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Stack } from 'expo-router';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
@@ -11,22 +11,13 @@ import { ConfirmDialogHost } from '@/components/dialog/ConfirmDialog';
 import { preloadDemoVideos } from '@/ai/demoVideos';
 import { useAuth } from '@/store/auth';
 import { supabase, hasSupabase } from '@/api/client';
+import { queryClient } from '@/api/queryClient';
 
 // 保险:即使 RootLayout 抛错,也在 1.5s 后让 splash 消失,这样能看到红屏报错而不是空 logo。
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
 setTimeout(() => {
   SplashScreen.hideAsync().catch(() => undefined);
 }, 1500);
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 1,
-      staleTime: 30_000,
-      refetchOnWindowFocus: false,
-    },
-  },
-});
 
 export default function RootLayout() {
   useEffect(() => {

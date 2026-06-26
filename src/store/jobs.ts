@@ -15,6 +15,7 @@ import { useCredits } from './credits';
 import { showToast } from '@/components/toast/Toast';
 import { hasSupabase } from '@/api/client';
 import { callGenerate } from '@/api/supabase/generateClient';
+import { queryClient } from '@/api/queryClient';
 
 export type JobKind = 'text_to_video' | 'continuation' | 'prompt_remix' | 'edit_publish';
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
@@ -246,9 +247,11 @@ async function runWithSupabase(
   // cancel guard:生成期间用户可能已取消
   const cur = useJobsStoreInternal.getState().jobs.find((j) => j.id === rec.id);
   if (!cur || cur.status === 'cancelled') return;
-  // 将 Supabase 返回的 Video 直接入本地 feed
-  useLocalVideos.getState().addVideo(video);
-  if (parent) useLocalVideos.getState().bumpStat(parent.id, 'fork_count');
+  // Supabase 模式:视频是草稿(private)且屏幕从云端读,不塞内存 feed。
+  // invalidate 让个人页(myVideos)刷新看到新草稿;feed 也刷新(虽然草稿不显示,续写父视频 fork_count 可能变)。
+  queryClient.invalidateQueries({ queryKey: ['myVideos'] });
+  queryClient.invalidateQueries({ queryKey: ['feed'] });
+  if (parent) queryClient.invalidateQueries({ queryKey: ['video', parent.id] });
   useJobsStoreInternal.getState().patch(rec.id, {
     status: 'succeeded',
     statusMsg: '完成',
