@@ -21,6 +21,24 @@ function sleep(ms: number) {
 }
 
 /**
+ * 对已有 videoId 进行续轮询，直到 ready/failed 或超时。
+ * 供 callGenerate 内部使用，也供个人页进入时恢复未完成的轮询。
+ */
+export async function resumePoll(videoId: string): Promise<'ready' | 'failed'> {
+  const deadline = Date.now() + POLL_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await sleep(POLL_INTERVAL_MS);
+    const { data, error } = await supabase().functions.invoke('poll-video', { body: { videoId } });
+    if (error) throw new Error(error.message);
+    const poll = data as { status?: 'generating' | 'ready' | 'failed'; error?: string };
+    if (poll.status === 'ready') return 'ready';
+    if (poll.status === 'failed') return 'failed';
+    // generating → 继续轮询
+  }
+  throw new Error('生成超时');
+}
+
+/**
  * 异步两段式：先调 generate-video 发起任务拿 videoId，再轮询 poll-video 直到 ready/failed。
  * 对外仍返回最终 Video（保持调用方签名不变）。额度扣减/退还全在 Edge Function 服务端完成。
  */
@@ -35,23 +53,12 @@ export async function callGenerate(args: GenerateArgs): Promise<Video> {
 
   const videoId = start.videoId;
 
-  // 2. 轮询 poll-video
-  const deadline = Date.now() + POLL_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    await sleep(POLL_INTERVAL_MS);
-    const { data: pollData, error: pollErr } =
-      await supabase().functions.invoke('poll-video', { body: { videoId } });
-    if (pollErr) throw new Error(pollErr.message);
-    const poll = pollData as PollResp;
-    if (poll.status === 'ready') {
-      const video = await getVideoRow(videoId);
-      if (!video) throw new Error('生成完成但读取视频失败');
-      return video;
-    }
-    if (poll.status === 'failed') {
-      throw new Error(poll.error ?? 'AI 生成失败');
-    }
-    // generating → 继续轮询
+  // 2. 复用 resumePoll 轮询
+  const result = await resumePoll(videoId);
+  if (result === 'ready') {
+    const video = await getVideoRow(videoId);
+    if (!video) throw new Error('生成完成但读取视频失败');
+    return video;
   }
-  throw new Error('生成超时，请稍后在个人页查看');
+  throw new Error('AI 生成失败');
 }

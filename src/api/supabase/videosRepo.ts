@@ -34,9 +34,11 @@ export async function listMyVideoRows(userId: string | null | undefined): Promis
   if (!userId) return [];
   const { data, error } = await supabase()
     .from('video_with_stats').select(SELECT)
-    .eq('author_id', userId).neq('video_url', '').order('created_at', { ascending: false });
+    .eq('author_id', userId).order('created_at', { ascending: false });
   if (error) throw error;
-  const videos = (data as VideoWithStatsRow[]).map(rowToVideo);
+  // 保留 ready（有 video_url）和 generating（占位行，video_url=''）；过滤掉其他状态（failed 等）
+  const videos = (data as VideoWithStatsRow[]).map(rowToVideo)
+    .filter((v) => v.status === 'ready' || v.status === 'generating');
   return withLiked(videos, await likedSet(userId, videos.map((v) => v.id)));
 }
 

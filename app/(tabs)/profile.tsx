@@ -1,14 +1,15 @@
-import { View, Text, StyleSheet, FlatList, Pressable, Share, Image } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Pressable, Share, Image, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useMemo, useEffect } from 'react';
+import { useMemo, useEffect, useRef } from 'react';
 import { Settings, Share2, Lock } from 'lucide-react-native';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { colors, radius, spacing, typography } from '@/theme';
 import { useAuth } from '@/store/auth';
 import { useLocalVideos } from '@/store/videos';
 import { listMyVideos } from '@/api/videos';
 import { hasSupabase } from '@/api/client';
+import { resumePoll } from '@/api/supabase/generateClient';
 import { useTabBarSpace } from '@/hooks/useTabBarSpace';
 import { useVideoThumbnail } from '@/hooks/useVideoThumbnail';
 import type { Video } from '@/api/types';
@@ -19,6 +20,7 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { user, isAnonymous } = useAuth();
   const { contentBottomPad } = useTabBarSpace();
+  const qc = useQueryClient();
 
   // ── Supabase 路径：react-query 从云端读本人所有视频（含草稿） ──────────────
   const { data: remoteVideos = [], isLoading: remoteLoading, isError: remoteError, refetch } = useQuery({
@@ -43,6 +45,23 @@ export default function ProfileScreen() {
   const videos = hasSupabase ? remoteVideos : localVideos;
   const isLoading = hasSupabase ? remoteLoading : false;
   const isError = hasSupabase ? remoteError : false;
+
+  // ── 进页面续轮询：对每个 generating 状态的视频恢复轮询，完成后刷新列表 ──────
+  const pollingRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!hasSupabase || !user) return;
+    for (const v of videos) {
+      if (v.status === 'generating' && !pollingRef.current.has(v.id)) {
+        pollingRef.current.add(v.id);
+        resumePoll(v.id)
+          .catch(() => undefined)
+          .finally(() => {
+            pollingRef.current.delete(v.id);
+            qc.invalidateQueries({ queryKey: ['myVideos', user.id] });
+          });
+      }
+    }
+  }, [videos, user, qc]);
 
   const totals = videos.reduce(
     (acc, v) => ({
@@ -122,7 +141,11 @@ export default function ProfileScreen() {
             </View>
           </View>
         }
-        renderItem={({ item }) => <Thumb video={item} onPress={() => router.push(`/video/${item.id}`)} />}
+        renderItem={({ item }) => (
+          item.status === 'generating'
+            ? <GeneratingThumb video={item} />
+            : <Thumb video={item} onPress={() => router.push(`/video/${item.id}`)} />
+        )}
         ListEmptyComponent={
           <EmptyState
             title="还没有作品"
@@ -146,6 +169,17 @@ function Stat({ label, value, highlight }: { label: string; value: number; highl
 
 function Divider() {
   return <View style={styles.divider} />;
+}
+
+function GeneratingThumb({ video }: { video: Video }) {
+  return (
+    <View style={[styles.thumb, styles.generatingThumb]} pointerEvents="none">
+      <ActivityIndicator size="small" color={colors.primary} />
+      <Text style={styles.generatingText} numberOfLines={2}>
+        {video.prompt ?? '生成中…'}
+      </Text>
+    </View>
+  );
 }
 
 function Thumb({ video, onPress }: { video: Video; onPress: () => void }) {
@@ -231,6 +265,18 @@ const styles = StyleSheet.create({
   grid: { paddingBottom: 0 },
   thumb: { flex: 1 / 3, aspectRatio: 9 / 16, marginBottom: 2 },
   thumbImg: { flex: 1 },
+  generatingThumb: {
+    backgroundColor: colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    padding: spacing.xs,
+  },
+  generatingText: {
+    ...typography.tiny,
+    color: colors.textMuted,
+    textAlign: 'center',
+  },
   thumbDraftBadge: {
     position: 'absolute', top: 4, left: 4,
     flexDirection: 'row', alignItems: 'center', gap: 3,
