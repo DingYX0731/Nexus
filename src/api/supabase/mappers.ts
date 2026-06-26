@@ -62,5 +62,6 @@ export function rowToComment(row: CommentRow): Comment {
     liked: false,
     parentId: row.parent_id ?? null,
     replyCount: 0,
+    replyToName: row.reply_to_name ?? null,
   };
 }

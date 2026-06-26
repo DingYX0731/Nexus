@@ -42,5 +42,6 @@ export interface CommentRow {
   parent_id: string | null;
   body: string;
   created_at: string;
+  reply_to_name?: string | null;
   author?: ProfileRow | null;
 }

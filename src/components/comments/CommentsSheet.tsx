@@ -179,13 +179,14 @@ export function CommentsSheet({ videoId, visible, onClose }: Props) {
       requireLogin('登录后即可回复评论,加入讨论 ✨');
       return;
     }
-    const target = comment.parentId
-      ? ordered.find((c) => c.id === comment.parentId) ?? comment
-      : comment;
-    setReplyTo(target);
+    // Keep the actual clicked comment so we can display the right @name.
+    // (No longer normalise to root — that was losing the display target.)
+    setReplyTo(comment);
     setEmojiOpen(false);
     focusInput();
-    scrollToComment(target.id);
+    // Scroll to the root of the thread so context is visible
+    const rootId = comment.parentId ?? comment.id;
+    scrollToComment(rootId);
   };
 
   const handleInputFocusGate = () => {
@@ -204,7 +205,14 @@ export function CommentsSheet({ videoId, visible, onClose }: Props) {
       requireLogin('登录后即可发表评论 💬');
       return;
     }
-    addComment(videoId, text, replyTo?.id ?? null, { id: user.id, name: user.username });
+    // parentId归一到根（两层楼结构）
+    const rootParentId = replyTo
+      ? (replyTo.parentId ?? replyTo.id)
+      : null;
+    // replyToName：只有当被回复的是楼内某条评论时才附带（即 replyTo 是回复而非根评论，
+    // 或者 replyTo 是根评论——此时带上名字也无妨，方便楼内区分）
+    const replyToName = replyTo ? replyTo.authorName : null;
+    addComment(videoId, text, rootParentId, { id: user.id, name: user.username }, replyToName);
     setDraft('');
     setReplyTo(null);
     setEmojiOpen(false);
@@ -455,6 +463,12 @@ function CommentRow({ comment, onLike, onReply }: { comment: Comment; onLike: ()
       </View>
       <View style={styles.rowMain}>
         <Text style={styles.authorName}>{comment.authorName}</Text>
+        {isReply && comment.replyToName ? (
+          <View style={styles.replyIndicatorRow}>
+            <CornerDownRight size={11} color={colors.accent} strokeWidth={2} />
+            <Text style={styles.replyIndicator}>回复 @{comment.replyToName}</Text>
+          </View>
+        ) : null}
         <Text style={styles.body}>{comment.text}</Text>
         <View style={styles.metaRow}>
           <Text style={styles.metaTime}>{timeAgo(comment.createdAt)}</Text>
@@ -516,6 +530,8 @@ const styles = StyleSheet.create({
   avatarTxt: { color: '#fff', fontWeight: '700', fontSize: 15 },
   rowMain: { flex: 1, gap: 2 },
   authorName: { ...typography.captionStrong, color: colors.textSecondary },
+  replyIndicatorRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 1 },
+  replyIndicator: { ...typography.tiny, color: colors.accent, fontSize: 11 },
   body: { ...typography.body, color: colors.text, marginTop: 2 },
   metaRow: { flexDirection: 'row', gap: spacing.md, alignItems: 'center', marginTop: 4 },
   metaTime: { ...typography.tiny, color: colors.textDim },

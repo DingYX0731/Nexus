@@ -38,5 +38,16 @@ describe('rowToComment', () => {
     expect(c.text).toBe('nice');
     expect(c.authorName).toBe('alex');
     expect(c.videoId).toBe('v1');
+    expect(c.replyToName).toBeNull();
+  });
+  it('maps reply_to_name when present', () => {
+    const row: CommentRow = {
+      id: 'c2', video_id: 'v1', author_id: 'u2', parent_id: 'c1', body: 'thanks', created_at: '2026-06-24T01:00:00Z',
+      reply_to_name: 'alex',
+      author: { id: 'u2', username: 'bob', avatar_url: null, created_at: '2026-06-24T00:00:00Z' },
+    };
+    const c = rowToComment(row);
+    expect(c.replyToName).toBe('alex');
+    expect(c.parentId).toBe('c1');
   });
 });

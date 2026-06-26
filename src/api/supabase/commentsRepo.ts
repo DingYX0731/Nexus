@@ -13,9 +13,9 @@ export async function listCommentsRemote(videoId: string): Promise<Comment[]> {
   return (data as CommentRow[]).map(rowToComment);
 }
 
-export async function addCommentRemote(videoId: string, body: string, authorId: string, parentId: string | null): Promise<Comment> {
+export async function addCommentRemote(videoId: string, body: string, authorId: string, parentId: string | null, replyToName: string | null): Promise<Comment> {
   const { data, error } = await supabase()
-    .from('comments').insert({ video_id: videoId, body, author_id: authorId, parent_id: parentId })
+    .from('comments').insert({ video_id: videoId, body, author_id: authorId, parent_id: parentId, reply_to_name: replyToName })
     .select(SELECT).single();
   if (error) throw error;
   return rowToComment(data as CommentRow);

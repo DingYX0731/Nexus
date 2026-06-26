@@ -14,12 +14,13 @@ export interface Comment {
   liked: boolean;
   parentId: string | null;
   replyCount: number;
+  replyToName?: string | null;
 }
 
 interface CommentsStore {
   byVideo: Record<string, Comment[]>;
   ensureSeeded: (videoId: string) => void;
-  add: (videoId: string, text: string, parentId: string | null, author: { id: string; name: string }) => Comment;
+  add: (videoId: string, text: string, parentId: string | null, author: { id: string; name: string }, replyToName?: string | null) => Comment;
   toggleLike: (videoId: string, commentId: string) => void;
 }
 
@@ -114,7 +115,7 @@ export const useComments = create<CommentsStore>((set, get) => ({
       set((s) => ({ byVideo: { ...s.byVideo, [videoId]: seedFor(videoId) } }));
     }
   },
-  add: (videoId, text, parentId, author) => {
+  add: (videoId, text, parentId, author, replyToName) => {
     const c: Comment = {
       id: nextId(),
       videoId,
@@ -127,9 +128,10 @@ export const useComments = create<CommentsStore>((set, get) => ({
       liked: false,
       parentId,
       replyCount: 0,
+      replyToName: replyToName ?? null,
     };
     if (hasSupabase) {
-      addCommentRemote(videoId, text, author.id, parentId)
+      addCommentRemote(videoId, text, author.id, parentId, replyToName ?? null)
         .then((remote) => {
           set((s) => {
             const cur = s.byVideo[videoId] ?? [];
