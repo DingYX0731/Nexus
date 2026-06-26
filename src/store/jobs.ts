@@ -89,11 +89,6 @@ interface SubmitRemixOptions {
   parentVideo: Video;
   prompt: string;
 }
-interface SubmitEditOptions {
-  parentVideo: Video;
-  editMetadata: EditMetadata;
-}
-
 function authorOfNew(): { id: string; username: string } {
   const { user, isAnonymous } = useAuth.getState();
   if (isAnonymous || !user) return { id: 'anon', username: '匿名用户' };
@@ -385,45 +380,5 @@ export async function submitRemix(opts: SubmitRemixOptions): Promise<AiJobRecord
       }
     })();
   }
-  return rec;
-}
-
-// 编辑发布:复用原 videoUrl,不调 provider
-export function submitEditPublish(opts: SubmitEditOptions): AiJobRecord {
-  const author = authorOfNew();
-  const rec: AiJobRecord = {
-    id: newId(),
-    ownerUserId: author.id,
-    ownerUsername: author.username,
-    kind: 'edit_publish',
-    promptSummary: opts.parentVideo.prompt,
-    parentVideoId: opts.parentVideo.id,
-    status: 'succeeded',
-    statusMsg: '完成',
-    createdAt: Date.now(),
-    finishedAt: Date.now(),
-    editMetadata: opts.editMetadata,
-  };
-  useJobsStoreInternal.getState().add(rec);
-  const video = makeNewVideo({
-    authorId: rec.ownerUserId === 'anon' ? null : rec.ownerUserId,
-    authorUsername: author.username,
-    prompt: opts.parentVideo.prompt,
-    parent: opts.parentVideo,
-    remixKind: 'edit',
-    videoUrl: opts.parentVideo.video_url,
-    thumbnailUrl: opts.parentVideo.thumbnail_url ?? undefined,
-    tailFrameUrl: opts.parentVideo.tail_frame_url ?? undefined,
-    durationMs: opts.parentVideo.duration_ms ?? undefined,
-    width: opts.parentVideo.width ?? undefined,
-    height: opts.parentVideo.height ?? undefined,
-    aiProvider: opts.parentVideo.ai_provider ?? undefined,
-    editMetadata: opts.editMetadata,
-  });
-  useLocalVideos.getState().addVideo(video);
-  // 剪辑流程是用户显式"发布",直接公开
-  useLocalVideos.getState().setVisibility(video.id, 'public');
-  useLocalVideos.getState().bumpStat(opts.parentVideo.id, 'fork_count');
-  useJobsStoreInternal.getState().patch(rec.id, { finishedVideoId: video.id });
   return rec;
 }
