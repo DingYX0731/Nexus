@@ -60,7 +60,7 @@ export function rowToComment(row: CommentRow): Comment {
     createdAt: new Date(row.created_at).getTime(),
     likeCount: 0,
     liked: false,
-    parentId: null,
+    parentId: row.parent_id ?? null,
     replyCount: 0,
   };
 }

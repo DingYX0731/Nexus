@@ -39,6 +39,7 @@ export interface CommentRow {
   id: string;
   video_id: string;
   author_id: string | null;
+  parent_id: string | null;
   body: string;
   created_at: string;
   author?: ProfileRow | null;

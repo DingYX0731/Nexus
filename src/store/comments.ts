@@ -129,7 +129,7 @@ export const useComments = create<CommentsStore>((set, get) => ({
       replyCount: 0,
     };
     if (hasSupabase) {
-      addCommentRemote(videoId, text, author.id)
+      addCommentRemote(videoId, text, author.id, parentId)
         .then((remote) => {
           set((s) => {
             const cur = s.byVideo[videoId] ?? [];

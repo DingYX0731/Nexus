@@ -31,7 +31,7 @@ describe('rowToVideo', () => {
 describe('rowToComment', () => {
   it('maps body to text and author name', () => {
     const row: CommentRow = {
-      id: 'c1', video_id: 'v1', author_id: 'u1', body: 'nice', created_at: '2026-06-24T00:00:00Z',
+      id: 'c1', video_id: 'v1', author_id: 'u1', parent_id: null, body: 'nice', created_at: '2026-06-24T00:00:00Z',
       author: { id: 'u1', username: 'alex', avatar_url: null, created_at: '2026-06-24T00:00:00Z' },
     };
     const c = rowToComment(row);
