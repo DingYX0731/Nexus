@@ -38,7 +38,13 @@
           }
         }
       ],
-      "expo-video"
+      "expo-video",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "允许 AI Shorts 访问相册以上传头像。"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
