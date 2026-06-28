@@ -26,3 +26,8 @@ export function validatePassword(raw: string): Validation {
   if (raw.length < 6) return { ok: false, msg: '密码至少 6 位' };
   return { ok: true };
 }
+
+export function validateBio(raw: string): Validation {
+  if (raw.length > 80) return { ok: false, msg: '简介最多 80 个字符' };
+  return { ok: true };
+}
