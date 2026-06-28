@@ -10,6 +10,7 @@ import { useLocalVideos } from '@/store/videos';
 import { listMyVideos } from '@/api/videos';
 import { hasSupabase } from '@/api/client';
 import { resumePoll } from '@/api/supabase/generateClient';
+import { getFollowCounts } from '@/api/supabase/followsRepo';
 import { useTabBarSpace } from '@/hooks/useTabBarSpace';
 import { useVideoThumbnail } from '@/hooks/useVideoThumbnail';
 import type { Video } from '@/api/types';
@@ -62,6 +63,12 @@ export default function ProfileScreen() {
       }
     }
   }, [videos, user, qc]);
+
+  const { data: followCounts = { followers: 0, following: 0 } } = useQuery({
+    queryKey: ['followCounts', user?.id],
+    queryFn: () => getFollowCounts(user!.id),
+    enabled: hasSupabase && !!user,
+  });
 
   const totals = videos.reduce(
     (acc, v) => ({
@@ -116,6 +123,14 @@ export default function ProfileScreen() {
                 <Stat label="点赞" value={totals.likes} />
                 <Divider />
                 <Stat label="被续写" value={totals.forks} highlight />
+                {hasSupabase && (
+                  <>
+                    <Divider />
+                    <Stat label="关注" value={followCounts.following} />
+                    <Divider />
+                    <Stat label="粉丝" value={followCounts.followers} />
+                  </>
+                )}
               </View>
 
               {isAnonymous ? (
