@@ -15,6 +15,7 @@ import { colors, radius, spacing, typography } from '@/theme';
 import { useAuth } from '@/store/auth';
 import { hasSupabase } from '@/api/client';
 import { LoadingState, ErrorState, EmptyState } from '@/components/ui/ScreenState';
+import { FollowButton } from '@/components/social/FollowButton';
 
 export default function VideoDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -146,6 +147,7 @@ export default function VideoDetail() {
           <Text style={styles.title} numberOfLines={4}>{video.title || video.prompt}</Text>
           <View style={styles.metaRow}>
             <Text style={styles.author}>@{video.author?.username ?? 'unknown'}</Text>
+            {!!video.author_id && <FollowButton targetUserId={video.author_id} />}
             <Text style={styles.dot}>·</Text>
             <Text style={styles.statText}>{video.stats?.play_count ?? 0} 次播放</Text>
             {isOwner && (

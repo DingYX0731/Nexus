@@ -2,12 +2,23 @@ import { Tabs } from 'expo-router';
 import { View, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Home, Plus, Bell, User } from 'lucide-react-native';
+import { useQuery } from '@tanstack/react-query';
 import { colors, typography } from '@/theme';
 import { TAB_BAR_BASE } from '@/hooks/useTabBarSpace';
+import { hasSupabase } from '@/api/client';
+import { unreadCountRemote } from '@/api/supabase/notificationsRepo';
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = TAB_BAR_BASE + insets.bottom;
+
+  const { data: unreadCount = 0 } = useQuery({
+    queryKey: ['unreadCount'],
+    queryFn: unreadCountRemote,
+    enabled: hasSupabase,
+    refetchInterval: 30000,
+    refetchOnWindowFocus: true,
+  });
 
   return (
     <Tabs
@@ -48,6 +59,7 @@ export default function TabLayout() {
         name="inbox"
         options={{
           title: '通知',
+          tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
           tabBarIcon: ({ color, focused }) => (
             <Bell color={color} size={24} fill={focused ? color : 'transparent'} strokeWidth={focused ? 2.4 : 2} />
           ),

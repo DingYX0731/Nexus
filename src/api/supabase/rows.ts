@@ -45,3 +45,15 @@ export interface CommentRow {
   reply_to_name?: string | null;
   author?: ProfileRow | null;
 }
+
+export interface NotificationRow {
+  id: string;
+  user_id: string;
+  actor_id: string | null;
+  type: string;            // like | comment | fork | follow
+  video_id: string | null;
+  comment_id: string | null;
+  read: boolean;
+  created_at: string;
+  actor?: ProfileRow | null;  // join 出的触发者资料
+}
