@@ -2,7 +2,8 @@ import { useState, useMemo, useEffect } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet, Alert, ScrollView, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Sparkles, Wand2, Lock, Coins, Clock, CheckCircle2, XCircle, ChevronRight } from 'lucide-react-native';
+import { Sparkles, Wand2, Lock, Clock, CheckCircle2, XCircle, ChevronRight } from 'lucide-react-native';
+import { CreditsDisplay } from '@/components/ui/CreditsDisplay';
 import { colors, radius, spacing, typography } from '@/theme';
 import { defaultProvider } from '@/ai/VideoGenProvider';
 import { useTabBarSpace } from '@/hooks/useTabBarSpace';
@@ -11,6 +12,8 @@ import { useCredits, COST_GENERATION } from '@/store/credits';
 import { hasSupabase } from '@/api/client';
 import { useJobs, submitTextToVideo, type AiJobRecord } from '@/store/jobs';
 import { showToast } from '@/components/toast/Toast';
+import { showDialog } from '@/components/dialog/ConfirmDialog';
+import { grantCreditsRemote } from '@/api/supabase/creditsRepo';
 
 const PROMPT_SUGGESTIONS = [
   '一只穿宇航服的橘猫漂浮在土星环上,慢镜头,电影感',
@@ -90,7 +93,26 @@ function CreateAuthed({ userId, username, contentBottomPad }:
       return;
     }
     if (credits < COST_GENERATION) {
-      Alert.alert('额度不足', '邀请好友或完成任务可获取更多额度(M3 上线)。');
+      if (hasSupabase) {
+        showDialog({
+          title: '额度不足',
+          message: '你的生成额度已耗尽。可以领取 5 个体验额度继续创作。',
+          primaryLabel: '领取体验额度',
+          secondaryLabel: '知道了',
+          icon: 'sparkles',
+          onPrimary: async () => {
+            try {
+              await grantCreditsRemote(5);
+              await syncRemote(userId);
+              showToast({ message: '已领取 5 额度,快去创作吧!' });
+            } catch (e: any) {
+              showToast({ message: `领取失败:${e?.message ?? '请稍后重试'}`, durationMs: 4000 });
+            }
+          },
+        });
+      } else {
+        Alert.alert('额度不足', '邀请好友或完成任务可获取更多额度(M3 上线)。');
+      }
       return;
     }
     if (!charge(userId)) {
@@ -123,8 +145,7 @@ function CreateAuthed({ userId, username, contentBottomPad }:
               <Wand2 color={colors.primary} size={24} />
             </View>
             <View style={styles.creditsChip}>
-              <Coins color={colors.warning} size={14} />
-              <Text style={styles.creditsText}>{credits} 额度</Text>
+              <CreditsDisplay />
             </View>
           </View>
           <Text style={styles.title}>用 AI 生成短视频</Text>
@@ -260,7 +281,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface, borderRadius: radius.pill,
     borderWidth: 1, borderColor: colors.border,
   },
-  creditsText: { ...typography.captionStrong, color: colors.text },
 
   title: { ...typography.h1, color: colors.text },
   sub: { ...typography.body, color: colors.textMuted },

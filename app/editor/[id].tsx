@@ -2,14 +2,13 @@ import { useState } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { X, Type, Palette, Music, Scissors } from 'lucide-react-native';
-import { getVideo } from '@/api/videos';
+import { getVideo, publishEdit } from '@/api/videos';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import type { EditMetadata, FilterId } from '@/api/types';
 import { colors, radius, spacing, typography } from '@/theme';
 import { useAuth } from '@/store/auth';
-import { submitEditPublish } from '@/store/jobs';
 
 const FILTERS: { id: FilterId; label: string }[] = [
   { id: 'none', label: '原片' },
@@ -23,6 +22,7 @@ export default function EditorScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user, isAnonymous, requireAuth } = useAuth();
+  const qc = useQueryClient();
   const { data: source } = useQuery({
     queryKey: ['video', id],
     queryFn: () => getVideo(id!),
@@ -58,12 +58,10 @@ export default function EditorScreen() {
     if (!source) return;
     setBusy(true);
     try {
-      const job = submitEditPublish({ parentVideo: source, editMetadata: edit });
-      if (job.finishedVideoId) {
-        router.dismissTo(`/video/${job.finishedVideoId}`);
-      } else {
-        router.dismissTo('/(tabs)/create');
-      }
+      const video = await publishEdit({ parentId: source.id, editMetadata: edit });
+      qc.invalidateQueries({ queryKey: ['feed'] });
+      qc.invalidateQueries({ queryKey: ['myVideos'] });
+      router.dismissTo(`/video/${video.id}`);
     } catch (e: any) {
       Alert.alert('发布失败', e?.message ?? String(e));
     } finally {

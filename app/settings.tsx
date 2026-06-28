@@ -13,6 +13,7 @@ import { hasSupabase } from '@/api/client';
 import { useLocalVideos } from '@/store/videos';
 import { defaultProvider } from '@/ai/VideoGenProvider';
 import { showToast } from '@/components/toast/Toast';
+import { CreditsDisplay } from '@/components/ui/CreditsDisplay';
 
 const PROVIDER_LABEL: Record<string, string> = {
   mock: 'Mock(本地示例)',
@@ -90,7 +91,7 @@ export default function SettingsScreen() {
           <Row
             icon={<Coins color={colors.warning} size={18} />}
             label="额度"
-            value={`${credits} / 无限制`}
+            rightNode={<CreditsDisplay />}
             onPress={() => {
               if (!user) return;
               Alert.alert('获取额度', '邀请好友、完成任务即可获取更多额度(敬请期待)', [
@@ -170,13 +171,14 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Row({ icon, label, value, note, onPress, chevron }: {
+function Row({ icon, label, value, note, onPress, chevron, rightNode }: {
   icon: React.ReactNode;
   label: string;
   value?: string;
   note?: string;
   onPress?: () => void;
   chevron?: boolean;
+  rightNode?: React.ReactNode;
 }) {
   const inner = (
     <View style={styles.row}>
@@ -185,7 +187,7 @@ function Row({ icon, label, value, note, onPress, chevron }: {
         <Text style={styles.rowLabel}>{label}</Text>
         {note && <Text style={styles.rowNote}>{note}</Text>}
       </View>
-      {value && <Text style={styles.rowValue}>{value}</Text>}
+      {rightNode ? rightNode : value && <Text style={styles.rowValue}>{value}</Text>}
       {chevron && onPress && <ChevronRight color={colors.textMuted} size={16} />}
     </View>
   );

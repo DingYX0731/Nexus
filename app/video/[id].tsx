@@ -14,6 +14,7 @@ import { showAuthRequired } from '@/components/dialog/ConfirmDialog';
 import { colors, radius, spacing, typography } from '@/theme';
 import { useAuth } from '@/store/auth';
 import { hasSupabase } from '@/api/client';
+import { LoadingState, ErrorState, EmptyState } from '@/components/ui/ScreenState';
 
 export default function VideoDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -25,7 +26,7 @@ export default function VideoDetail() {
   const commentCount = commentList?.length ?? 0;
 
   // ── Supabase 路径：useQuery 从云端读单视频 ──────────────────────────────────
-  const { data: remoteVideo } = useQuery({
+  const { data: remoteVideo, isLoading: videoLoading, isError: videoError, refetch: videoRefetch } = useQuery({
     queryKey: ['video', id],
     queryFn: () => getVideo(id!),
     enabled: hasSupabase && !!id,
@@ -38,6 +39,9 @@ export default function VideoDetail() {
   // 优先云端数据；本地 Zustand 用作乐观 fallback（hasSupabase=false 时的唯一来源）
   const video = hasSupabase ? (remoteVideo ?? localVideo) : localVideo;
   const isOwner = !!user && !!video && video.author_id === user.id;
+
+  const isLoading = hasSupabase ? videoLoading : false;
+  const isError = hasSupabase ? videoError : false;
 
   const { data: tree = [] } = useQuery({
     queryKey: ['tree', video?.root_id ?? id],
@@ -90,7 +94,13 @@ export default function VideoDetail() {
             <ArrowLeft color="#fff" size={22} />
           </Pressable>
         </View>
-        <Text style={styles.placeholder}>加载中...</Text>
+        {isLoading ? (
+          <LoadingState text="加载中…" />
+        ) : isError ? (
+          <ErrorState onRetry={videoRefetch} />
+        ) : (
+          <EmptyState title="视频不存在" />
+        )}
       </SafeAreaView>
     );
   }

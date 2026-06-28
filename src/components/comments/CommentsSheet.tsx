@@ -18,6 +18,7 @@ import { useComments, type Comment } from '@/store/comments';
 import { useAuth } from '@/store/auth';
 import { showAuthRequired } from '@/components/dialog/ConfirmDialog';
 import { useRouter } from 'expo-router';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const SHEET_HEIGHT = SCREEN_H * 0.78;
@@ -458,9 +459,7 @@ function CommentRow({ comment, onLike, onReply }: { comment: Comment; onLike: ()
   const isReply = !!comment.parentId;
   return (
     <View style={[styles.row, isReply && styles.rowReply]}>
-      <View style={[styles.avatar, { backgroundColor: comment.authorAvatarColor }]}>
-        <Text style={styles.avatarTxt}>{comment.authorName.slice(0, 1)}</Text>
-      </View>
+      <UserAvatar user={{ username: comment.authorName, avatar_url: null }} size={32} />
       <View style={styles.rowMain}>
         <Text style={styles.authorName}>{comment.authorName}</Text>
         {isReply && comment.replyToName ? (
@@ -526,8 +525,6 @@ const styles = StyleSheet.create({
 
   row: { flexDirection: 'row', gap: spacing.md, paddingVertical: spacing.md, alignItems: 'flex-start' },
   rowReply: { paddingLeft: spacing.xxl, paddingVertical: spacing.sm },
-  avatar: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  avatarTxt: { color: '#fff', fontWeight: '700', fontSize: 15 },
   rowMain: { flex: 1, gap: 2 },
   authorName: { ...typography.captionStrong, color: colors.textSecondary },
   replyIndicatorRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 1 },

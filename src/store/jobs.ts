@@ -13,8 +13,10 @@ import { useLocalVideos, makeNewVideo } from './videos';
 import { useAuth } from './auth';
 import { useCredits } from './credits';
 import { showToast } from '@/components/toast/Toast';
+import { showDialog } from '@/components/dialog/ConfirmDialog';
 import { hasSupabase } from '@/api/client';
-import { callGenerate } from '@/api/supabase/generateClient';
+import { callGenerate, CreditsExhaustedError } from '@/api/supabase/generateClient';
+import { grantCreditsRemote } from '@/api/supabase/creditsRepo';
 import { queryClient } from '@/api/queryClient';
 
 export type JobKind = 'text_to_video' | 'continuation' | 'prompt_remix' | 'edit_publish';
@@ -89,11 +91,6 @@ interface SubmitRemixOptions {
   parentVideo: Video;
   prompt: string;
 }
-interface SubmitEditOptions {
-  parentVideo: Video;
-  editMetadata: EditMetadata;
-}
-
 function authorOfNew(): { id: string; username: string } {
   const { user, isAnonymous } = useAuth.getState();
   if (isAnonymous || !user) return { id: 'anon', username: '匿名用户' };
@@ -220,19 +217,43 @@ function finalize(rec: AiJobRecord, result: {
 
 function fail(rec: AiJobRecord, err: any) {
   const wasCancelled = err?.message === 'cancelled';
+  const isCreditsExhausted =
+    err instanceof CreditsExhaustedError || err?.code === 'credits_exhausted';
   const msg = wasCancelled ? '已取消' : (err?.message ?? '生成失败');
   useJobsStoreInternal.getState().patch(rec.id, {
     status: wasCancelled ? 'cancelled' : 'failed',
-    statusMsg: msg,
+    statusMsg: isCreditsExhausted ? '额度不足' : msg,
     finishedAt: Date.now(),
   });
   // 失败/取消都退还额度——仅保底模式在客户端扣减,Supabase 模式由 Edge Function 负责。
   if (!hasSupabase && rec.ownerUserId !== 'anon' && rec.kind !== 'edit_publish') {
     useCredits.getState().refund(rec.ownerUserId);
   }
-  if (!wasCancelled) {
-    showToast({ message: `生成失败:${msg}`, durationMs: 4000 });
+  if (wasCancelled) return;
+
+  if (isCreditsExhausted && hasSupabase) {
+    // 额度不足:弹引导对话框,允许用户领取体验额度
+    const userId = rec.ownerUserId;
+    showDialog({
+      title: '额度不足',
+      message: '你的生成额度已耗尽。可以领取 5 个体验额度继续创作。',
+      primaryLabel: '领取体验额度',
+      secondaryLabel: '知道了',
+      icon: 'sparkles',
+      onPrimary: async () => {
+        try {
+          await grantCreditsRemote(5);
+          await useCredits.getState().syncRemote(userId);
+          showToast({ message: '已领取 5 额度,快去创作吧!' });
+        } catch (e: any) {
+          showToast({ message: `领取失败:${e?.message ?? '请稍后重试'}`, durationMs: 4000 });
+        }
+      },
+    });
+    return;
   }
+
+  showToast({ message: `生成失败:${msg}`, durationMs: 4000 });
 }
 
 // ── Supabase 路径辅助：单次 callGenerate，完成后入本地流 ──────────────────
@@ -385,45 +406,5 @@ export async function submitRemix(opts: SubmitRemixOptions): Promise<AiJobRecord
       }
     })();
   }
-  return rec;
-}
-
-// 编辑发布:复用原 videoUrl,不调 provider
-export function submitEditPublish(opts: SubmitEditOptions): AiJobRecord {
-  const author = authorOfNew();
-  const rec: AiJobRecord = {
-    id: newId(),
-    ownerUserId: author.id,
-    ownerUsername: author.username,
-    kind: 'edit_publish',
-    promptSummary: opts.parentVideo.prompt,
-    parentVideoId: opts.parentVideo.id,
-    status: 'succeeded',
-    statusMsg: '完成',
-    createdAt: Date.now(),
-    finishedAt: Date.now(),
-    editMetadata: opts.editMetadata,
-  };
-  useJobsStoreInternal.getState().add(rec);
-  const video = makeNewVideo({
-    authorId: rec.ownerUserId === 'anon' ? null : rec.ownerUserId,
-    authorUsername: author.username,
-    prompt: opts.parentVideo.prompt,
-    parent: opts.parentVideo,
-    remixKind: 'edit',
-    videoUrl: opts.parentVideo.video_url,
-    thumbnailUrl: opts.parentVideo.thumbnail_url ?? undefined,
-    tailFrameUrl: opts.parentVideo.tail_frame_url ?? undefined,
-    durationMs: opts.parentVideo.duration_ms ?? undefined,
-    width: opts.parentVideo.width ?? undefined,
-    height: opts.parentVideo.height ?? undefined,
-    aiProvider: opts.parentVideo.ai_provider ?? undefined,
-    editMetadata: opts.editMetadata,
-  });
-  useLocalVideos.getState().addVideo(video);
-  // 剪辑流程是用户显式"发布",直接公开
-  useLocalVideos.getState().setVisibility(video.id, 'public');
-  useLocalVideos.getState().bumpStat(opts.parentVideo.id, 'fork_count');
-  useJobsStoreInternal.getState().patch(rec.id, { finishedVideoId: video.id });
   return rec;
 }

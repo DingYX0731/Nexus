@@ -1,25 +1,29 @@
-import { View, Text, StyleSheet, FlatList, Image, Pressable, Share } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Pressable, Share, Image, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useMemo, useEffect } from 'react';
+import { useMemo, useEffect, useRef } from 'react';
 import { Settings, Share2, Lock } from 'lucide-react-native';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { colors, radius, spacing, typography } from '@/theme';
 import { useAuth } from '@/store/auth';
 import { useLocalVideos } from '@/store/videos';
 import { listMyVideos } from '@/api/videos';
 import { hasSupabase } from '@/api/client';
+import { resumePoll } from '@/api/supabase/generateClient';
 import { useTabBarSpace } from '@/hooks/useTabBarSpace';
 import { useVideoThumbnail } from '@/hooks/useVideoThumbnail';
 import type { Video } from '@/api/types';
+import { LoadingState, ErrorState, EmptyState } from '@/components/ui/ScreenState';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 
 export default function ProfileScreen() {
   const router = useRouter();
   const { user, isAnonymous } = useAuth();
   const { contentBottomPad } = useTabBarSpace();
+  const qc = useQueryClient();
 
   // ── Supabase 路径：react-query 从云端读本人所有视频（含草稿） ──────────────
-  const { data: remoteVideos = [] } = useQuery({
+  const { data: remoteVideos = [], isLoading: remoteLoading, isError: remoteError, refetch } = useQuery({
     queryKey: ['myVideos', user?.id],
     queryFn: () => listMyVideos(user?.id),
     enabled: hasSupabase && !!user && !isAnonymous,
@@ -39,6 +43,25 @@ export default function ProfileScreen() {
 
   // ── 统一出口 ────────────────────────────────────────────────────────────────
   const videos = hasSupabase ? remoteVideos : localVideos;
+  const isLoading = hasSupabase ? remoteLoading : false;
+  const isError = hasSupabase ? remoteError : false;
+
+  // ── 进页面续轮询：对每个 generating 状态的视频恢复轮询，完成后刷新列表 ──────
+  const pollingRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!hasSupabase || !user) return;
+    for (const v of videos) {
+      if (v.status === 'generating' && !pollingRef.current.has(v.id)) {
+        pollingRef.current.add(v.id);
+        resumePoll(v.id)
+          .catch(() => undefined)
+          .finally(() => {
+            pollingRef.current.delete(v.id);
+            qc.invalidateQueries({ queryKey: ['myVideos', user.id] });
+          });
+      }
+    }
+  }, [videos, user, qc]);
 
   const totals = videos.reduce(
     (acc, v) => ({
@@ -49,7 +72,13 @@ export default function ProfileScreen() {
     { plays: 0, likes: 0, forks: 0 },
   );
 
-  const initial = isAnonymous ? '匿' : (user?.username ?? 'me').slice(0, 1).toUpperCase();
+  if (isLoading) {
+    return <LoadingState text="加载中…" />;
+  }
+
+  if (isError) {
+    return <ErrorState onRetry={refetch} />;
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -77,9 +106,7 @@ export default function ProfileScreen() {
         ListHeaderComponent={
           <View>
             <View style={styles.header}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarTxt}>{initial}</Text>
-              </View>
+              <UserAvatar user={{ username: user?.username, avatar_url: null }} size={80} />
               <Text style={styles.name}>{isAnonymous ? '匿名访客' : `@${user?.username ?? 'me'}`}</Text>
               <Text style={styles.bio}>{isAnonymous ? '登录后即可发布与收获' : '用 AI 讲你的故事'}</Text>
 
@@ -114,12 +141,17 @@ export default function ProfileScreen() {
             </View>
           </View>
         }
-        renderItem={({ item }) => <Thumb video={item} onPress={() => router.push(`/video/${item.id}`)} />}
+        renderItem={({ item }) => (
+          item.status === 'generating'
+            ? <GeneratingThumb video={item} />
+            : <Thumb video={item} onPress={() => router.push(`/video/${item.id}`)} />
+        )}
         ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>还没有作品</Text>
-            <Text style={styles.emptyText}>去 创作 页生成第一条 AI 短视频</Text>
-          </View>
+          <EmptyState
+            title="还没有作品"
+            subtitle="去 创作 页生成第一条 AI 短视频"
+            cta={{ label: '开始创作', onPress: () => router.push('/(tabs)/create') }}
+          />
         }
       />
     </SafeAreaView>
@@ -137,6 +169,17 @@ function Stat({ label, value, highlight }: { label: string; value: number; highl
 
 function Divider() {
   return <View style={styles.divider} />;
+}
+
+function GeneratingThumb({ video }: { video: Video }) {
+  return (
+    <View style={[styles.thumb, styles.generatingThumb]} pointerEvents="none">
+      <ActivityIndicator size="small" color={colors.primary} />
+      <Text style={styles.generatingText} numberOfLines={2}>
+        {video.prompt ?? '生成中…'}
+      </Text>
+    </View>
+  );
 }
 
 function Thumb({ video, onPress }: { video: Video; onPress: () => void }) {
@@ -178,11 +221,6 @@ const styles = StyleSheet.create({
   topRight: { flexDirection: 'row', gap: spacing.lg, alignItems: 'center' },
 
   header: { alignItems: 'center', paddingTop: spacing.md, paddingBottom: spacing.lg, gap: spacing.xs },
-  avatar: {
-    width: 84, height: 84, borderRadius: 42, backgroundColor: colors.primary,
-    alignItems: 'center', justifyContent: 'center', marginBottom: spacing.xs,
-  },
-  avatarTxt: { color: '#fff', fontSize: 32, fontWeight: '700' },
   name: { ...typography.h2, color: colors.text },
   bio: { ...typography.caption, color: colors.textMuted },
 
@@ -227,6 +265,18 @@ const styles = StyleSheet.create({
   grid: { paddingBottom: 0 },
   thumb: { flex: 1 / 3, aspectRatio: 9 / 16, marginBottom: 2 },
   thumbImg: { flex: 1 },
+  generatingThumb: {
+    backgroundColor: colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    padding: spacing.xs,
+  },
+  generatingText: {
+    ...typography.tiny,
+    color: colors.textMuted,
+    textAlign: 'center',
+  },
   thumbDraftBadge: {
     position: 'absolute', top: 4, left: 4,
     flexDirection: 'row', alignItems: 'center', gap: 3,
@@ -234,8 +284,4 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.7)', borderRadius: 4,
   },
   thumbDraftText: { color: '#fff', fontSize: 10, fontWeight: '700' },
-
-  empty: { padding: spacing.xxl, alignItems: 'center', gap: spacing.sm },
-  emptyTitle: { ...typography.h3, color: colors.text },
-  emptyText: { ...typography.caption, color: colors.textMuted },
 });
