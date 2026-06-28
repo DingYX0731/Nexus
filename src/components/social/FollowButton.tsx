@@ -9,11 +9,12 @@ export function FollowButton({ targetUserId }: { targetUserId: string }) {
   const qc = useQueryClient();
   const { user } = useAuth();
   // 自己不显示关注自己；未配 Supabase 不显示
-  if (!hasSupabase || !user || user.id === targetUserId) return null;
+  const shouldShow = hasSupabase && !!user && user.id !== targetUserId;
 
   const { data: following = false } = useQuery({
     queryKey: ['isFollowing', targetUserId],
     queryFn: () => isFollowing(targetUserId),
+    enabled: shouldShow,
   });
 
   const mut = useMutation({
@@ -23,6 +24,8 @@ export function FollowButton({ targetUserId }: { targetUserId: string }) {
       qc.invalidateQueries({ queryKey: ['followCounts', targetUserId] });
     },
   });
+
+  if (!shouldShow) return null;
 
   return (
     <Pressable
