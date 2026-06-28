@@ -35,7 +35,7 @@ export async function resumePoll(videoId: string): Promise<'ready' | 'failed'> {
     if (poll.status === 'failed') return 'failed';
     // generating → 继续轮询
   }
-  throw new Error('生成超时');
+  throw new Error('生成超时，请稍后在个人页查看');
 }
 
 /**
