@@ -22,6 +22,8 @@ export function FollowButton({ targetUserId }: { targetUserId: string }) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['isFollowing', targetUserId] });
       qc.invalidateQueries({ queryKey: ['followCounts', targetUserId] });
+      // 当前用户的"关注数"也变了，刷新自己个人页的 followCounts
+      qc.invalidateQueries({ queryKey: ['followCounts', user?.id] });
     },
   });
 
