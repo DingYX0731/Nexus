@@ -12,6 +12,8 @@ import { useCredits, COST_GENERATION } from '@/store/credits';
 import { hasSupabase } from '@/api/client';
 import { useJobs, submitTextToVideo, type AiJobRecord } from '@/store/jobs';
 import { showToast } from '@/components/toast/Toast';
+import { showDialog } from '@/components/dialog/ConfirmDialog';
+import { grantCreditsRemote } from '@/api/supabase/creditsRepo';
 
 const PROMPT_SUGGESTIONS = [
   '一只穿宇航服的橘猫漂浮在土星环上,慢镜头,电影感',
@@ -91,7 +93,26 @@ function CreateAuthed({ userId, username, contentBottomPad }:
       return;
     }
     if (credits < COST_GENERATION) {
-      Alert.alert('额度不足', '邀请好友或完成任务可获取更多额度(M3 上线)。');
+      if (hasSupabase) {
+        showDialog({
+          title: '额度不足',
+          message: '你的生成额度已耗尽。可以领取 5 个体验额度继续创作。',
+          primaryLabel: '领取体验额度',
+          secondaryLabel: '知道了',
+          icon: 'sparkles',
+          onPrimary: async () => {
+            try {
+              await grantCreditsRemote(5);
+              await syncRemote(userId);
+              showToast({ message: '已领取 5 额度,快去创作吧!' });
+            } catch (e: any) {
+              showToast({ message: `领取失败:${e?.message ?? '请稍后重试'}`, durationMs: 4000 });
+            }
+          },
+        });
+      } else {
+        Alert.alert('额度不足', '邀请好友或完成任务可获取更多额度(M3 上线)。');
+      }
       return;
     }
     if (!charge(userId)) {

@@ -13,8 +13,10 @@ import { useLocalVideos, makeNewVideo } from './videos';
 import { useAuth } from './auth';
 import { useCredits } from './credits';
 import { showToast } from '@/components/toast/Toast';
+import { showDialog } from '@/components/dialog/ConfirmDialog';
 import { hasSupabase } from '@/api/client';
-import { callGenerate } from '@/api/supabase/generateClient';
+import { callGenerate, CreditsExhaustedError } from '@/api/supabase/generateClient';
+import { grantCreditsRemote } from '@/api/supabase/creditsRepo';
 import { queryClient } from '@/api/queryClient';
 
 export type JobKind = 'text_to_video' | 'continuation' | 'prompt_remix' | 'edit_publish';
@@ -215,19 +217,43 @@ function finalize(rec: AiJobRecord, result: {
 
 function fail(rec: AiJobRecord, err: any) {
   const wasCancelled = err?.message === 'cancelled';
+  const isCreditsExhausted =
+    err instanceof CreditsExhaustedError || err?.code === 'credits_exhausted';
   const msg = wasCancelled ? '已取消' : (err?.message ?? '生成失败');
   useJobsStoreInternal.getState().patch(rec.id, {
     status: wasCancelled ? 'cancelled' : 'failed',
-    statusMsg: msg,
+    statusMsg: isCreditsExhausted ? '额度不足' : msg,
     finishedAt: Date.now(),
   });
   // 失败/取消都退还额度——仅保底模式在客户端扣减,Supabase 模式由 Edge Function 负责。
   if (!hasSupabase && rec.ownerUserId !== 'anon' && rec.kind !== 'edit_publish') {
     useCredits.getState().refund(rec.ownerUserId);
   }
-  if (!wasCancelled) {
-    showToast({ message: `生成失败:${msg}`, durationMs: 4000 });
+  if (wasCancelled) return;
+
+  if (isCreditsExhausted && hasSupabase) {
+    // 额度不足:弹引导对话框,允许用户领取体验额度
+    const userId = rec.ownerUserId;
+    showDialog({
+      title: '额度不足',
+      message: '你的生成额度已耗尽。可以领取 5 个体验额度继续创作。',
+      primaryLabel: '领取体验额度',
+      secondaryLabel: '知道了',
+      icon: 'sparkles',
+      onPrimary: async () => {
+        try {
+          await grantCreditsRemote(5);
+          await useCredits.getState().syncRemote(userId);
+          showToast({ message: '已领取 5 额度,快去创作吧!' });
+        } catch (e: any) {
+          showToast({ message: `领取失败:${e?.message ?? '请稍后重试'}`, durationMs: 4000 });
+        }
+      },
+    });
+    return;
   }
+
+  showToast({ message: `生成失败:${msg}`, durationMs: 4000 });
 }
 
 // ── Supabase 路径辅助：单次 callGenerate，完成后入本地流 ──────────────────

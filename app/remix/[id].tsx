@@ -10,6 +10,9 @@ import { useAuth } from '@/store/auth';
 import { useCredits, COST_GENERATION } from '@/store/credits';
 import { submitContinuation, submitRemix } from '@/store/jobs';
 import { hasSupabase } from '@/api/client';
+import { showDialog } from '@/components/dialog/ConfirmDialog';
+import { showToast } from '@/components/toast/Toast';
+import { grantCreditsRemote } from '@/api/supabase/creditsRepo';
 
 type Mode = 'continuation' | 'prompt_remix';
 
@@ -60,7 +63,26 @@ export default function RemixScreen() {
   const onSubmit = async () => {
     if (!prompt.trim() || !source) return;
     if (credits < COST_GENERATION) {
-      Alert.alert('额度不足', '邀请好友可获取更多额度(敬请期待)');
+      if (hasSupabase) {
+        showDialog({
+          title: '额度不足',
+          message: '你的生成额度已耗尽。可以领取 5 个体验额度继续创作。',
+          primaryLabel: '领取体验额度',
+          secondaryLabel: '知道了',
+          icon: 'sparkles',
+          onPrimary: async () => {
+            try {
+              await grantCreditsRemote(5);
+              await syncRemote(user!.id);
+              showToast({ message: '已领取 5 额度,快去创作吧!' });
+            } catch (e: any) {
+              showToast({ message: `领取失败:${e?.message ?? '请稍后重试'}`, durationMs: 4000 });
+            }
+          },
+        });
+      } else {
+        Alert.alert('额度不足', '邀请好友可获取更多额度(敬请期待)');
+      }
       return;
     }
     if (!charge(user.id)) {

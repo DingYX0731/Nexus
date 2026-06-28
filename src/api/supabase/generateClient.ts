@@ -2,6 +2,15 @@ import { supabase } from '@/api/client';
 import type { Video } from '@/api/types';
 import { getVideoRow } from './videosRepo';
 
+/** 额度不足时从 callGenerate 抛出的可识别错误。 */
+export class CreditsExhaustedError extends Error {
+  code = 'credits_exhausted' as const;
+  constructor() {
+    super('额度不足');
+    this.name = 'CreditsExhaustedError';
+  }
+}
+
 export interface GenerateArgs {
   kind: 'text' | 'continuation' | 'remix';
   prompt: string;
@@ -46,9 +55,23 @@ export async function callGenerate(args: GenerateArgs): Promise<Video> {
   // 1. 发起
   const { data: startData, error: startErr } =
     await supabase().functions.invoke('generate-video', { body: args });
-  if (startErr) throw new Error(startErr.message);
+  if (startErr) {
+    // supabase-js 把 Edge Function 的非 2xx 响应 status 放在 startErr.status 或 message 里
+    const msg = startErr.message ?? '';
+    if (
+      (startErr as any).status === 402 ||
+      msg.includes('402') ||
+      msg.includes('额度不足')
+    ) {
+      throw new CreditsExhaustedError();
+    }
+    throw new Error(msg);
+  }
   const start = startData as StartResp;
-  if (start.error) throw new Error(start.error);
+  if (start.error) {
+    if (start.error.includes('额度不足')) throw new CreditsExhaustedError();
+    throw new Error(start.error);
+  }
   if (!start.videoId) throw new Error('发起生成失败：缺少 videoId');
 
   const videoId = start.videoId;
