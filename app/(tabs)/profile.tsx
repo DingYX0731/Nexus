@@ -11,6 +11,7 @@ import { listMyVideos } from '@/api/videos';
 import { hasSupabase } from '@/api/client';
 import { resumePoll } from '@/api/supabase/generateClient';
 import { getFollowCounts } from '@/api/supabase/followsRepo';
+import { getProfile } from '@/api/supabase/profilesRepo';
 import { useTabBarSpace } from '@/hooks/useTabBarSpace';
 import { useVideoThumbnail } from '@/hooks/useVideoThumbnail';
 import type { Video } from '@/api/types';
@@ -70,6 +71,12 @@ export default function ProfileScreen() {
     enabled: hasSupabase && !!user,
   });
 
+  const { data: profile } = useQuery({
+    queryKey: ['profile', user?.id],
+    queryFn: () => getProfile(user!.id),
+    enabled: hasSupabase && !!user,
+  });
+
   const totals = videos.reduce(
     (acc, v) => ({
       plays: acc.plays + (v.stats?.play_count ?? 0),
@@ -113,9 +120,13 @@ export default function ProfileScreen() {
         ListHeaderComponent={
           <View>
             <View style={styles.header}>
-              <UserAvatar user={{ username: user?.username, avatar_url: null }} size={80} />
+              <UserAvatar user={{ username: user?.username, avatar_url: profile?.avatar_url ?? null }} size={80} />
               <Text style={styles.name}>{isAnonymous ? '匿名访客' : `@${user?.username ?? 'me'}`}</Text>
-              <Text style={styles.bio}>{isAnonymous ? '登录后即可发布与收获' : '用 AI 讲你的故事'}</Text>
+              {profile?.bio ? (
+                <Text style={styles.bio}>{profile.bio}</Text>
+              ) : (
+                <Text style={styles.bio}>{isAnonymous ? '登录后即可发布与收获' : '用 AI 讲你的故事'}</Text>
+              )}
 
               <View style={styles.statsRow}>
                 <Stat label="播放" value={totals.plays} />
@@ -138,9 +149,16 @@ export default function ProfileScreen() {
                   <Text style={styles.loginTxt}>登录 / 注册</Text>
                 </Pressable>
               ) : (
-                <Pressable style={styles.secondaryBtn} onPress={() => router.push('/(tabs)/create')}>
-                  <Text style={styles.secondaryTxt}>发布新作品</Text>
-                </Pressable>
+                <View style={styles.actionRow}>
+                  <Pressable style={styles.secondaryBtn} onPress={() => router.push('/(tabs)/create')}>
+                    <Text style={styles.secondaryTxt}>发布新作品</Text>
+                  </Pressable>
+                  {hasSupabase && (
+                    <Pressable style={styles.secondaryBtn} onPress={() => router.push('/profile/edit' as any)}>
+                      <Text style={styles.secondaryTxt}>编辑资料</Text>
+                    </Pressable>
+                  )}
+                </View>
               )}
             </View>
 
@@ -254,8 +272,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary, borderRadius: radius.pill,
   },
   loginTxt: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  actionRow: {
+    flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md,
+  },
   secondaryBtn: {
-    marginTop: spacing.md, paddingHorizontal: spacing.xxl, paddingVertical: 10,
+    paddingHorizontal: spacing.xl, paddingVertical: 10,
     backgroundColor: colors.surface, borderRadius: radius.pill,
     borderWidth: 1, borderColor: colors.border,
   },
