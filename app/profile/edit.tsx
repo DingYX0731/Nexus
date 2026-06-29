@@ -198,7 +198,7 @@ export default function EditProfileScreen() {
             numberOfLines={3}
             textAlignVertical="top"
             editable={!saving}
-            maxLength={82}
+            maxLength={80}
           />
           {!bioValidation.ok && (
             <Text style={styles.fieldError}>{bioValidation.msg}</Text>
