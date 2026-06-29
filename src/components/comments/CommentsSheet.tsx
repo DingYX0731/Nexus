@@ -459,7 +459,7 @@ function CommentRow({ comment, onLike, onReply }: { comment: Comment; onLike: ()
   const isReply = !!comment.parentId;
   return (
     <View style={[styles.row, isReply && styles.rowReply]}>
-      <UserAvatar user={{ username: comment.authorName, avatar_url: null }} size={32} />
+      <UserAvatar user={{ username: comment.authorName, avatar_url: comment.authorAvatarUrl ?? null }} size={32} />
       <View style={styles.rowMain}>
         <Text style={styles.authorName}>{comment.authorName}</Text>
         {isReply && comment.replyToName ? (

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateUsername, validateEmail, validatePassword } from './validateUsername';
+import { validateUsername, validateEmail, validatePassword, validateBio } from './validateUsername';
 
 describe('validateUsername', () => {
   it('rejects empty', () => expect(validateUsername('').ok).toBe(false));
@@ -18,4 +18,10 @@ describe('validateEmail', () => {
 describe('validatePassword', () => {
   it('rejects under 6', () => expect(validatePassword('12345').ok).toBe(false));
   it('accepts 6+', () => expect(validatePassword('123456').ok).toBe(true));
+});
+
+describe('validateBio', () => {
+  it('accepts empty', () => expect(validateBio('').ok).toBe(true));
+  it('accepts under 80', () => expect(validateBio('a'.repeat(80)).ok).toBe(true));
+  it('rejects over 80', () => expect(validateBio('a'.repeat(81)).ok).toBe(false));
 });
