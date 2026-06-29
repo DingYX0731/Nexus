@@ -63,5 +63,6 @@ export function rowToComment(row: CommentRow): Comment {
     parentId: row.parent_id ?? null,
     replyCount: 0,
     replyToName: row.reply_to_name ?? null,
+    authorAvatarUrl: row.author?.avatar_url ?? null,
   };
 }

@@ -15,6 +15,7 @@ export interface Comment {
   parentId: string | null;
   replyCount: number;
   replyToName?: string | null;
+  authorAvatarUrl?: string | null;
 }
 
 interface CommentsStore {
