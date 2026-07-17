@@ -60,6 +60,7 @@ export default function RootLayout() {
             <Stack.Screen name="auth/login" options={{ presentation: 'modal' }} />
             <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
             <Stack.Screen name="profile/edit" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="user/[id]" options={{ presentation: 'card' }} />
           </Stack>
           <ToastHost />
           <ConfirmDialogHost />

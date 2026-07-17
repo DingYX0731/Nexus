@@ -14,6 +14,7 @@ import { showAuthRequired } from '@/components/dialog/ConfirmDialog';
 import { useAuth } from '@/store/auth';
 import { useComments } from '@/store/comments';
 import { useTabBarSpace } from '@/hooks/useTabBarSpace';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 import { colors, spacing, typography } from '@/theme';
 
 export function VideoCard({ video, isActive }: { video: Video; isActive: boolean }) {
@@ -88,7 +89,17 @@ export function VideoCard({ video, isActive }: { video: Video; isActive: boolean
   const overlayUi = (
     <View pointerEvents="box-none" style={[StyleSheet.absoluteFill, { justifyContent: 'flex-end' }]}>
       <View pointerEvents="box-none" style={[styles.bottomLeft, { bottom: tabBarHeight + 16 }]}>
-        <Pressable hitSlop={4} onPress={() => router.push(`/video/${video.id}`)}>
+        <Pressable
+          hitSlop={4}
+          style={styles.authorRow}
+          onPress={() => {
+            if (video.author_id) router.push(`/user/${video.author_id}` as any);
+          }}
+        >
+          <UserAvatar
+            user={{ username: video.author?.username, avatar_url: video.author?.avatar_url ?? null }}
+            size={30}
+          />
           <Text style={styles.author}>@{video.author?.username ?? 'unknown'}</Text>
         </Pressable>
         <Text style={styles.prompt} numberOfLines={3}>{video.prompt}</Text>
@@ -183,6 +194,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textShadowColor: 'rgba(0,0,0,0.55)',
     textShadowRadius: 6,
+  },
+  authorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   prompt: {
     color: '#fff',
