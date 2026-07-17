@@ -113,7 +113,10 @@ export async function listLikedVideosRows(userId: string): Promise<Video[]> {
   if (ids.length === 0) return [];
   const { data, error } = await supabase()
     .from('video_with_stats').select(SELECT)
-    .in('id', ids).eq('status', 'ready').order('created_at', { ascending: false });
+    .in('id', ids).eq('status', 'ready')
+    // 隐私：只显示公开的 + 自己的（视图不继承底表 RLS，须显式过滤，防点赞列表泄露他人已转私密的视频）
+    .or(`visibility.eq.public,author_id.eq.${userId}`)
+    .order('created_at', { ascending: false });
   if (error) throw error;
   const videos = (data as VideoWithStatsRow[]).map(rowToVideo);
   return withLiked(videos, await likedSet(currentUserId(), videos.map((v) => v.id)));
@@ -127,9 +130,11 @@ export async function listForkedVideosRows(userId: string): Promise<Video[]> {
   const myIds = (myRows ?? []).map((r: { id: string }) => r.id);
   if (myIds.length === 0) return [];
   // 再查 parent_id in myIds 且 author_id != userId（别人续写/remix 的作品）且 status=ready
+  // 隐私：只显示别人公开的续写作品（视图不继承底表 RLS，须显式过滤）
   const { data, error } = await supabase()
     .from('video_with_stats').select(SELECT)
     .in('parent_id', myIds).eq('status', 'ready').neq('author_id', userId)
+    .eq('visibility', 'public')
     .order('created_at', { ascending: false });
   if (error) throw error;
   const videos = (data as VideoWithStatsRow[]).map(rowToVideo);
