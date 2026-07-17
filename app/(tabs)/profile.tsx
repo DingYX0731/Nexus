@@ -130,10 +130,26 @@ export default function ProfileScreen() {
 
               <View style={styles.statsRow}>
                 <View style={styles.statFlex}><Stat label="播放" value={totals.plays} /></View>
-                <View style={styles.statFlex}><Stat label="点赞" value={totals.likes} /></View>
-                <View style={styles.statFlex}><Stat label="被续写" value={totals.forks} highlight /></View>
-                <View style={styles.statFlex}><Stat label="关注" value={followCounts.following} /></View>
-                <View style={styles.statFlex}><Stat label="粉丝" value={followCounts.followers} /></View>
+                <View style={styles.statFlex}>
+                  <Pressable onPress={() => router.push('/list/liked' as any)}>
+                    <Stat label="点赞" value={totals.likes} />
+                  </Pressable>
+                </View>
+                <View style={styles.statFlex}>
+                  <Pressable onPress={() => router.push('/list/forked' as any)}>
+                    <Stat label="被续写" value={totals.forks} highlight />
+                  </Pressable>
+                </View>
+                <View style={styles.statFlex}>
+                  <Pressable onPress={() => router.push('/list/following' as any)}>
+                    <Stat label="关注" value={followCounts.following} />
+                  </Pressable>
+                </View>
+                <View style={styles.statFlex}>
+                  <Pressable onPress={() => router.push('/list/followers' as any)}>
+                    <Stat label="粉丝" value={followCounts.followers} />
+                  </Pressable>
+                </View>
               </View>
 
               {isAnonymous ? (

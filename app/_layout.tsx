@@ -61,6 +61,10 @@ export default function RootLayout() {
             <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
             <Stack.Screen name="profile/edit" options={{ presentation: 'modal' }} />
             <Stack.Screen name="user/[id]" options={{ presentation: 'card' }} />
+            <Stack.Screen name="list/liked" options={{ presentation: 'card' }} />
+            <Stack.Screen name="list/forked" options={{ presentation: 'card' }} />
+            <Stack.Screen name="list/following" options={{ presentation: 'card' }} />
+            <Stack.Screen name="list/followers" options={{ presentation: 'card' }} />
           </Stack>
           <ToastHost />
           <ConfirmDialogHost />
