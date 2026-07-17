@@ -42,10 +42,22 @@ function ensureFfmpeg() {
   catch { console.error('未找到 ffmpeg，请先 brew install ffmpeg'); process.exit(1); }
 }
 
-// 抽视频末帧到临时 jpg，返回临时文件路径
+// 抽视频末帧到临时 jpg。
+// ffmpeg 8.x 要求单张图输出必须带 -update 1，否则报"image sequence pattern"错。
+// -sseof -1：定位到结尾前 1 秒，取该段最后一帧（对 h264 mp4 稳定）。
 function extractLastFrame(videoPath: string, outPath: string) {
-  // -sseof -0.1：定位到结尾前 0.1 秒，取该处一帧
-  execFileSync('ffmpeg', ['-y', '-sseof', '-0.1', '-i', videoPath, '-frames:v', '1', '-q:v', '3', outPath], { stdio: 'ignore' });
+  try {
+    execFileSync('ffmpeg', [
+      '-y', '-sseof', '-1', '-i', videoPath,
+      '-update', '1', '-frames:v', '1', '-q:v', '3', outPath,
+    ], { stdio: ['ignore', 'ignore', 'ignore'] });
+    if (fs.existsSync(outPath) && fs.statSync(outPath).size > 0) return;
+  } catch { /* 落到回退 */ }
+  // 回退：从头解到尾，-update 1 持续覆盖，最终留最后一帧（任何编码都 work，稍慢）
+  execFileSync('ffmpeg', [
+    '-y', '-i', videoPath,
+    '-update', '1', '-q:v', '3', outPath,
+  ], { stdio: ['ignore', 'ignore', 'ignore'] });
 }
 
 async function main() {
