@@ -1,13 +1,13 @@
 import { View, Text, StyleSheet, FlatList, Pressable, Share, Image, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useMemo, useEffect, useRef } from 'react';
+import { useMemo, useEffect, useRef, useState } from 'react';
 import { Settings, Share2, Lock } from 'lucide-react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { colors, radius, spacing, typography } from '@/theme';
 import { useAuth } from '@/store/auth';
 import { useLocalVideos } from '@/store/videos';
-import { listMyVideos } from '@/api/videos';
+import { listMyVideos, listLikedVideos } from '@/api/videos';
 import { hasSupabase } from '@/api/client';
 import { resumePoll } from '@/api/supabase/generateClient';
 import { getFollowCounts } from '@/api/supabase/followsRepo';
@@ -77,6 +77,17 @@ export default function ProfileScreen() {
     enabled: hasSupabase && !!user,
   });
 
+  // ── 作品/点赞 tab ──────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<'works' | 'liked'>('works');
+
+  const { data: likedVideos = [] } = useQuery({
+    queryKey: ['likedVideos', user?.id],
+    queryFn: () => listLikedVideos(user!.id),
+    enabled: hasSupabase && !!user && !isAnonymous && activeTab === 'liked',
+  });
+
+  const displayVideos = activeTab === 'works' ? videos : likedVideos;
+
   const totals = videos.reduce(
     (acc, v) => ({
       plays: acc.plays + (v.stats?.play_count ?? 0),
@@ -112,7 +123,7 @@ export default function ProfileScreen() {
       </View>
 
       <FlatList
-        data={videos}
+        data={displayVideos}
         keyExtractor={(v) => v.id}
         numColumns={3}
         contentContainerStyle={[styles.grid, { paddingBottom: contentBottomPad }]}
@@ -130,11 +141,6 @@ export default function ProfileScreen() {
 
               <View style={styles.statsRow}>
                 <View style={styles.statFlex}><Stat label="播放" value={totals.plays} /></View>
-                <View style={styles.statFlex}>
-                  <Pressable onPress={() => router.push('/list/liked' as any)}>
-                    <Stat label="点赞" value={totals.likes} />
-                  </Pressable>
-                </View>
                 <View style={styles.statFlex}>
                   <Pressable onPress={() => router.push('/list/forked' as any)}>
                     <Stat label="被续写" value={totals.forks} highlight />
@@ -159,29 +165,39 @@ export default function ProfileScreen() {
               ) : null}
             </View>
 
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionHeaderTxt}>
-                作品 · {videos.length}
-                {videos.some((v) => v.visibility === 'private') && (
-                  <Text style={styles.sectionHeaderSub}>
-                    {`  (${videos.filter((v) => v.visibility === 'private').length} 个草稿)`}
-                  </Text>
-                )}
-              </Text>
+            {/* 作品 / 点赞 tab bar */}
+            <View style={styles.tabsRow}>
+              <Pressable style={[styles.tabsItem, activeTab === 'works' && styles.tabsItemActive]} onPress={() => setActiveTab('works')}>
+                <Text style={[styles.tabsText, activeTab === 'works' && styles.tabsTextActive]}>
+                  作品 · {videos.length}
+                  {activeTab === 'works' && videos.some((v) => v.visibility === 'private')
+                    ? ` (${videos.filter((v) => v.visibility === 'private').length} 草稿)` : ''}
+                </Text>
+              </Pressable>
+              <Pressable style={[styles.tabsItem, activeTab === 'liked' && styles.tabsItemActive]} onPress={() => setActiveTab('liked')}>
+                <Text style={[styles.tabsText, activeTab === 'liked' && styles.tabsTextActive]}>点赞</Text>
+              </Pressable>
             </View>
           </View>
         }
         renderItem={({ item }) => (
           item.status === 'generating'
             ? <GeneratingThumb video={item} />
-            : <Thumb video={item} onPress={() => router.push(`/video/${item.id}`)} />
+            : <Thumb video={item} onPress={() => router.push(`/video/${item.id}` as any)} />
         )}
         ListEmptyComponent={
-          <EmptyState
-            title="还没有作品"
-            subtitle="去 创作 页生成第一条 AI 短视频"
-            cta={{ label: '开始创作', onPress: () => router.push('/(tabs)/create') }}
-          />
+          activeTab === 'works' ? (
+            <EmptyState
+              title="还没有作品"
+              subtitle="去 创作 页生成第一条 AI 短视频"
+              cta={{ label: '开始创作', onPress: () => router.push('/(tabs)/create') }}
+            />
+          ) : (
+            <EmptyState
+              title="还没有点赞"
+              subtitle="去 Feed 发现喜欢的视频，点赞收藏"
+            />
+          )
         }
       />
     </SafeAreaView>
