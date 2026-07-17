@@ -129,37 +129,18 @@ export default function ProfileScreen() {
               )}
 
               <View style={styles.statsRow}>
-                <Stat label="播放" value={totals.plays} />
-                <Divider />
-                <Stat label="点赞" value={totals.likes} />
-                <Divider />
-                <Stat label="被续写" value={totals.forks} highlight />
-                {hasSupabase && (
-                  <>
-                    <Divider />
-                    <Stat label="关注" value={followCounts.following} />
-                    <Divider />
-                    <Stat label="粉丝" value={followCounts.followers} />
-                  </>
-                )}
+                <View style={styles.statFlex}><Stat label="播放" value={totals.plays} /></View>
+                <View style={styles.statFlex}><Stat label="点赞" value={totals.likes} /></View>
+                <View style={styles.statFlex}><Stat label="被续写" value={totals.forks} highlight /></View>
+                <View style={styles.statFlex}><Stat label="关注" value={followCounts.following} /></View>
+                <View style={styles.statFlex}><Stat label="粉丝" value={followCounts.followers} /></View>
               </View>
 
               {isAnonymous ? (
                 <Pressable style={styles.loginBtn} onPress={() => router.push('/auth/login')}>
                   <Text style={styles.loginTxt}>登录 / 注册</Text>
                 </Pressable>
-              ) : (
-                <View style={styles.actionRow}>
-                  <Pressable style={styles.secondaryBtn} onPress={() => router.push('/(tabs)/create')}>
-                    <Text style={styles.secondaryTxt}>发布新作品</Text>
-                  </Pressable>
-                  {hasSupabase && (
-                    <Pressable style={styles.secondaryBtn} onPress={() => router.push('/profile/edit' as any)}>
-                      <Text style={styles.secondaryTxt}>编辑资料</Text>
-                    </Pressable>
-                  )}
-                </View>
-              )}
+              ) : null}
             </View>
 
             <View style={styles.sectionHeader}>
@@ -198,10 +179,6 @@ function Stat({ label, value, highlight }: { label: string; value: number; highl
       <Text style={styles.statLbl}>{label}</Text>
     </View>
   );
-}
-
-function Divider() {
-  return <View style={styles.divider} />;
 }
 
 function GeneratingThumb({ video }: { video: Video }) {
@@ -258,29 +235,20 @@ const styles = StyleSheet.create({
   bio: { ...typography.caption, color: colors.textMuted },
 
   statsRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    marginTop: spacing.md, gap: spacing.xl,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginTop: spacing.md, paddingHorizontal: spacing.sm, width: '100%',
   },
-  statItem: { alignItems: 'center', minWidth: 56 },
+  statFlex: { flex: 1, alignItems: 'center' },
+  statItem: { alignItems: 'center' },
   statVal: { ...typography.h2, color: colors.text },
   statValHi: { color: colors.primary },
   statLbl: { ...typography.tiny, color: colors.textMuted, marginTop: 2 },
-  divider: { width: StyleSheet.hairlineWidth, height: 28, backgroundColor: colors.border },
 
   loginBtn: {
     marginTop: spacing.md, paddingHorizontal: spacing.xxl, paddingVertical: 10,
     backgroundColor: colors.primary, borderRadius: radius.pill,
   },
   loginTxt: { color: '#fff', fontWeight: '700', fontSize: 14 },
-  actionRow: {
-    flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md,
-  },
-  secondaryBtn: {
-    paddingHorizontal: spacing.xl, paddingVertical: 10,
-    backgroundColor: colors.surface, borderRadius: radius.pill,
-    borderWidth: 1, borderColor: colors.border,
-  },
-  secondaryTxt: { color: colors.text, fontWeight: '700', fontSize: 14 },
 
   tabsRow: {
     flexDirection: 'row', justifyContent: 'space-around',

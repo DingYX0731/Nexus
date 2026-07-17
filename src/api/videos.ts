@@ -70,6 +70,14 @@ export async function getVideo(id: string): Promise<Video | null> {
   return snapshot().videos.find((v) => v.id === id) ?? null;
 }
 
+export async function listUserVideos(userId: string): Promise<Video[]> {
+  if (hasSupabase) return repo.listUserPublicVideosRows(userId);
+  snapshot().hydrate();
+  return snapshot().videos.filter(
+    (v) => v.author_id === userId && v.visibility === 'public' && v.status === 'ready',
+  );
+}
+
 export async function getVersionTree(rootId: string): Promise<VersionNode[]> {
   if (hasSupabase) return repo.getVersionTreeRows(rootId);
   snapshot().hydrate();

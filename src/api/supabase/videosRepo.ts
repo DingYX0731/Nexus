@@ -52,6 +52,16 @@ export async function getVideoRow(id: string): Promise<Video | null> {
   return { ...v, is_liked: liked.has(v.id) };
 }
 
+export async function listUserPublicVideosRows(userId: string): Promise<Video[]> {
+  const { data, error } = await supabase()
+    .from('video_with_stats').select(SELECT)
+    .eq('author_id', userId).eq('visibility', 'public').eq('status', 'ready')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  const videos = (data as VideoWithStatsRow[]).map(rowToVideo);
+  return withLiked(videos, await likedSet(currentUserId(), videos.map((v) => v.id)));
+}
+
 export async function getVersionTreeRows(rootId: string): Promise<VersionNode[]> {
   const { data, error } = await supabase()
     .from('videos').select('id,parent_id,root_id,remix_kind,depth,prompt,thumbnail_url,created_at,author:profiles!videos_author_id_fkey(username)')

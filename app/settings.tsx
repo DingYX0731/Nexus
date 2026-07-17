@@ -3,7 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
   X, User as UserIcon, Sparkles, Coins, Bell, Shield, Info,
-  HelpCircle, LogOut, ChevronRight, FileText,
+  HelpCircle, LogOut, ChevronRight, FileText, Pencil,
 } from 'lucide-react-native';
 import { useEffect } from 'react';
 import { colors, radius, spacing, typography } from '@/theme';
@@ -74,6 +74,18 @@ export default function SettingsScreen() {
               <Text style={styles.profileName}>@{user.username}</Text>
               <Text style={styles.profileMeta}>{myVideoCount} 个作品 · {credits} 个额度</Text>
             </View>
+          </View>
+        )}
+
+        {/* 编辑资料入口 */}
+        {hasSupabase && !isAnonymous && (
+          <View style={styles.sectionBody}>
+            <Row
+              icon={<Pencil color={colors.text} size={18} />}
+              label="编辑资料"
+              onPress={() => router.push('/profile/edit' as any)}
+              chevron
+            />
           </View>
         )}
 
