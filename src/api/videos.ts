@@ -91,6 +91,7 @@ export async function getVersionTree(rootId: string): Promise<VersionNode[]> {
       depth: v.depth,
       prompt: v.prompt,
       author_username: v.author?.username ?? null,
+      author_avatar_url: v.author?.avatar_url ?? null,
       thumbnail_url: v.thumbnail_url ?? null,
       created_at: v.created_at,
     }))
@@ -133,12 +134,16 @@ export async function continueVideo(input: { parentId: string; prompt: string })
   }
   const parent = await getVideo(input.parentId);
   if (!parent) throw new Error('源视频未找到');
-  if (!parent.tail_frame_url) throw new Error('源视频缺少尾帧,无法续写');
-  const { jobId } = await defaultProvider.imageToVideo({
-    imageUrl: parent.tail_frame_url,
-    prompt: input.prompt,
-  });
-  const result = await waitForJob(jobId);
+  // 兜底：优先用尾帧，无则用缩略图，若两者都没有则退化为纯文生
+  const frameUrl = parent.tail_frame_url ?? parent.thumbnail_url ?? null;
+  let result: { videoUrl: string; thumbnailUrl?: string; tailFrameUrl?: string; durationMs?: number; width?: number; height?: number };
+  if (frameUrl) {
+    const { jobId } = await defaultProvider.imageToVideo({ imageUrl: frameUrl, prompt: input.prompt });
+    result = await waitForJob(jobId);
+  } else {
+    const { jobId } = await defaultProvider.textToVideo({ prompt: input.prompt });
+    result = await waitForJob(jobId);
+  }
   const author = authorOfNew();
   const video = makeNewVideo({
     authorId: author.id,

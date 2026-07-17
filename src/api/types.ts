@@ -62,6 +62,7 @@ export interface VersionNode {
   depth: number;
   prompt?: string | null;
   author_username?: string | null;
+  author_avatar_url?: string | null;
   thumbnail_url?: string | null;
   created_at: string;
 }

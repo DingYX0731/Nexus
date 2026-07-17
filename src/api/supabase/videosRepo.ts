@@ -64,7 +64,7 @@ export async function listUserPublicVideosRows(userId: string): Promise<Video[]>
 
 export async function getVersionTreeRows(rootId: string): Promise<VersionNode[]> {
   const { data, error } = await supabase()
-    .from('videos').select('id,parent_id,root_id,remix_kind,depth,prompt,thumbnail_url,created_at,author:profiles!videos_author_id_fkey(username)')
+    .from('videos').select('id,parent_id,root_id,remix_kind,depth,prompt,thumbnail_url,created_at,author:profiles!videos_author_id_fkey(username,avatar_url)')
     .eq('root_id', rootId);
   if (error) throw error;
   return (data ?? [])
@@ -72,6 +72,7 @@ export async function getVersionTreeRows(rootId: string): Promise<VersionNode[]>
       id: r.id, parent_id: r.parent_id, root_id: r.root_id,
       remix_kind: r.remix_kind, depth: r.depth, prompt: r.prompt,
       author_username: r.author?.username ?? null,
+      author_avatar_url: r.author?.avatar_url ?? null,
       thumbnail_url: r.thumbnail_url, created_at: r.created_at,
     }))
     .sort((a, b) => a.depth - b.depth || a.created_at.localeCompare(b.created_at));
