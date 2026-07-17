@@ -325,7 +325,8 @@ export async function submitTextToVideo(opts: SubmitTextOptions): Promise<AiJobR
 
 export async function submitContinuation(opts: SubmitContinuationOptions): Promise<AiJobRecord> {
   const author = authorOfNew();
-  if (!opts.parentVideo.tail_frame_url) throw new Error('源视频缺少尾帧,无法续写');
+  // 兜底：优先用尾帧，无则用缩略图，两者都没有时传 undefined（Edge Function/Provider 退化文生）
+  const frameUrl = opts.parentVideo.tail_frame_url ?? opts.parentVideo.thumbnail_url ?? undefined;
   const rec: AiJobRecord = {
     id: newId(),
     ownerUserId: author.id,
@@ -347,7 +348,7 @@ export async function submitContinuation(opts: SubmitContinuationOptions): Promi
             kind: 'continuation',
             prompt: opts.prompt,
             parentId: opts.parentVideo.id,
-            parentTailFrameUrl: opts.parentVideo.tail_frame_url ?? undefined,
+            parentTailFrameUrl: frameUrl,
           },
           opts.parentVideo,
         );
@@ -358,7 +359,12 @@ export async function submitContinuation(opts: SubmitContinuationOptions): Promi
   } else {
     (async () => {
       try {
-        const externalJobId = await runProviderImage(rec, opts.parentVideo.tail_frame_url!, opts.prompt);
+        let externalJobId: string;
+        if (frameUrl) {
+          externalJobId = await runProviderImage(rec, frameUrl, opts.prompt);
+        } else {
+          externalJobId = await runProviderText(rec, opts.prompt);
+        }
         const result = await pollUntilDone(rec, externalJobId);
         finalize(rec, result, opts.parentVideo);
       } catch (e) {
