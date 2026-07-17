@@ -1,4 +1,5 @@
 import { View, Text, Pressable, StyleSheet, ScrollView, Share, Alert } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -16,6 +17,7 @@ import { useAuth } from '@/store/auth';
 import { hasSupabase } from '@/api/client';
 import { LoadingState, ErrorState, EmptyState } from '@/components/ui/ScreenState';
 import { FollowButton } from '@/components/social/FollowButton';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 
 export default function VideoDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -264,19 +266,42 @@ export default function VideoDetail() {
               <GitBranch color={colors.accent} size={14} />
               <Text style={styles.treeTitle}>版本树 · {tree.length} 个版本</Text>
             </View>
-            {tree.slice(0, 8).map((node) => (
-              <Pressable
-                key={node.id}
-                style={[styles.treeRow, node.id === id && styles.treeRowActive]}
-                onPress={() => router.replace(`/video/${node.id}`)}
-              >
-                <Text style={styles.treeBullet}>
-                  {'  '.repeat(node.depth)}└ {kindLabelShort(node.remix_kind)}
-                </Text>
-                <Text style={styles.treeText} numberOfLines={1}>
-                  @{node.author_username ?? '?'} · {node.prompt?.slice(0, 26) ?? '(剪辑)'}
-                </Text>
-              </Pressable>
+            {tree.slice(0, 20).map((node) => (
+              <View key={node.id} style={[styles.treeCard, node.id === id && styles.treeCardActive, { marginLeft: node.depth * 16 }]}>
+                <Pressable
+                  style={styles.treeCardMain}
+                  onPress={() => router.replace(`/video/${node.id}` as any)}
+                >
+                  {/* 缩略图 */}
+                  {node.thumbnail_url ? (
+                    <Image source={{ uri: node.thumbnail_url }} style={styles.treeThumb} contentFit="cover" />
+                  ) : (
+                    <View style={[styles.treeThumb, styles.treeThumbPlaceholder]} />
+                  )}
+                  {/* 文字区 */}
+                  <View style={styles.treeCardContent}>
+                    <View style={styles.treeCardRow}>
+                      <UserAvatar user={{ username: node.author_username, avatar_url: node.author_avatar_url }} size={20} />
+                      <Text style={styles.treeCardAuthor} numberOfLines={1}>@{node.author_username ?? '?'}</Text>
+                      <View style={styles.treeKindBadge}>
+                        <Text style={styles.treeKindText}>{kindLabelShort(node.remix_kind)}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.treeCardPrompt} numberOfLines={1}>
+                      {node.prompt?.slice(0, 40) ?? '(剪辑)'}
+                    </Text>
+                  </View>
+                </Pressable>
+                {/* 从此续写按钮 */}
+                <Pressable
+                  style={styles.treeRemixBtn}
+                  hitSlop={6}
+                  onPress={() => router.push(`/remix/${node.id}` as any)}
+                >
+                  <GitBranch color={colors.accent} size={14} />
+                  <Text style={styles.treeRemixText}>续写</Text>
+                </Pressable>
+              </View>
             ))}
           </View>
         )}
@@ -381,6 +406,7 @@ const styles = StyleSheet.create({
   tree: { padding: spacing.lg, gap: spacing.sm },
   treeHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.xs },
   treeTitle: { ...typography.captionStrong, color: colors.text },
+  // legacy simple row (unused after upgrade, kept for type safety)
   treeRow: {
     flexDirection: 'row', gap: spacing.sm, alignItems: 'center',
     padding: spacing.sm, borderRadius: radius.sm,
@@ -388,4 +414,29 @@ const styles = StyleSheet.create({
   treeRowActive: { backgroundColor: colors.surface },
   treeBullet: { color: colors.textMuted, fontFamily: 'Courier', fontSize: 12 },
   treeText: { color: colors.textSecondary, ...typography.caption, flex: 1 },
+  // card styles
+  treeCard: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: colors.surface, borderRadius: radius.sm,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  treeCardActive: { borderColor: colors.primary, borderWidth: 1.5 },
+  treeCardMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.sm },
+  treeThumb: { width: 40, height: 56, borderRadius: 4 },
+  treeThumbPlaceholder: { backgroundColor: colors.surfaceAlt },
+  treeCardContent: { flex: 1, gap: 4 },
+  treeCardRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  treeCardAuthor: { ...typography.tiny, color: colors.textSecondary, flex: 1 },
+  treeKindBadge: {
+    backgroundColor: colors.accentSoft, paddingHorizontal: 5, paddingVertical: 2, borderRadius: 3,
+  },
+  treeKindText: { ...typography.tiny, color: colors.accent, fontWeight: '600' },
+  treeCardPrompt: { ...typography.tiny, color: colors.textMuted },
+  treeRemixBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    paddingHorizontal: spacing.sm, paddingVertical: spacing.sm,
+    borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: colors.border,
+  },
+  treeRemixText: { ...typography.tiny, color: colors.accent, fontWeight: '600' },
 });
