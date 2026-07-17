@@ -6,6 +6,7 @@ import {
   HelpCircle, LogOut, ChevronRight, FileText, Pencil,
 } from 'lucide-react-native';
 import { useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { colors, radius, spacing, typography } from '@/theme';
 import { useAuth } from '@/store/auth';
 import { useCredits, FREE_INITIAL_CREDITS } from '@/store/credits';
@@ -14,6 +15,8 @@ import { useLocalVideos } from '@/store/videos';
 import { defaultProvider } from '@/ai/VideoGenProvider';
 import { showToast } from '@/components/toast/Toast';
 import { CreditsDisplay } from '@/components/ui/CreditsDisplay';
+import { UserAvatar } from '@/components/ui/UserAvatar';
+import { getProfile } from '@/api/supabase/profilesRepo';
 
 const PROVIDER_LABEL: Record<string, string> = {
   mock: 'Mock(本地示例)',
@@ -42,6 +45,12 @@ export default function SettingsScreen() {
   const credits = user ? (creditsMap[user.id] ?? FREE_INITIAL_CREDITS) : 0;
   const myVideoCount = user ? videos.filter((v) => v.author_id === user.id).length : 0;
 
+  const { data: profile } = useQuery({
+    queryKey: ['profile', user?.id],
+    queryFn: () => getProfile(user!.id),
+    enabled: hasSupabase && !!user && !isAnonymous,
+  });
+
   const onLogout = () => {
     Alert.alert('退出登录?', '退出后将返回匿名状态。', [
       { text: '取消', style: 'cancel' },
@@ -67,9 +76,7 @@ export default function SettingsScreen() {
         {/* 用户信息卡片 */}
         {!isAnonymous && user && (
           <View style={styles.profileCard}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarTxt}>{user.username.slice(0, 1).toUpperCase()}</Text>
-            </View>
+            <UserAvatar user={{ username: user.username, avatar_url: profile?.avatar_url ?? null }} size={48} />
             <View style={{ flex: 1 }}>
               <Text style={styles.profileName}>@{user.username}</Text>
               <Text style={styles.profileMeta}>{myVideoCount} 个作品 · {credits} 个额度</Text>
@@ -220,8 +227,6 @@ const styles = StyleSheet.create({
     padding: spacing.md, backgroundColor: colors.surface, borderRadius: radius.lg,
     borderWidth: 1, borderColor: colors.border,
   },
-  avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  avatarTxt: { color: '#fff', fontSize: 20, fontWeight: '700' },
   profileName: { ...typography.h3, color: colors.text },
   profileMeta: { ...typography.caption, color: colors.textMuted, marginTop: 2 },
 
