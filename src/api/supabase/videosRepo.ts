@@ -104,6 +104,38 @@ export async function deleteVideoRemote(id: string): Promise<void> {
   if (error) throw error;
 }
 
+export async function listLikedVideosRows(userId: string): Promise<Video[]> {
+  // 先查该用户点赞的 video_id 列表，再从 video_with_stats 拉完整数据
+  const { data: likeRows, error: likeErr } = await supabase()
+    .from('likes').select('video_id').eq('user_id', userId);
+  if (likeErr) throw likeErr;
+  const ids = (likeRows ?? []).map((r: { video_id: string }) => r.video_id);
+  if (ids.length === 0) return [];
+  const { data, error } = await supabase()
+    .from('video_with_stats').select(SELECT)
+    .in('id', ids).eq('status', 'ready').order('created_at', { ascending: false });
+  if (error) throw error;
+  const videos = (data as VideoWithStatsRow[]).map(rowToVideo);
+  return withLiked(videos, await likedSet(currentUserId(), videos.map((v) => v.id)));
+}
+
+export async function listForkedVideosRows(userId: string): Promise<Video[]> {
+  // 先查该用户自己的视频 ids
+  const { data: myRows, error: myErr } = await supabase()
+    .from('videos').select('id').eq('author_id', userId);
+  if (myErr) throw myErr;
+  const myIds = (myRows ?? []).map((r: { id: string }) => r.id);
+  if (myIds.length === 0) return [];
+  // 再查 parent_id in myIds 且 author_id != userId（别人续写/remix 的作品）且 status=ready
+  const { data, error } = await supabase()
+    .from('video_with_stats').select(SELECT)
+    .in('parent_id', myIds).eq('status', 'ready').neq('author_id', userId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  const videos = (data as VideoWithStatsRow[]).map(rowToVideo);
+  return withLiked(videos, await likedSet(currentUserId(), videos.map((v) => v.id)));
+}
+
 // publishEdit 用：不调 AI，直接插一行（复制父视频 URL + editMetadata）
 export interface InsertVideoInput {
   authorId: string;

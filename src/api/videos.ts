@@ -243,3 +243,19 @@ export async function deleteVideo(videoId: string): Promise<void> {
   if (hasSupabase) return repo.deleteVideoRemote(videoId);
   useLocalVideos.getState().deleteVideo(videoId);
 }
+
+export async function listLikedVideos(userId: string): Promise<Video[]> {
+  if (hasSupabase) return repo.listLikedVideosRows(userId);
+  // 本地保底：无点赞持久化，返回空
+  return [];
+}
+
+export async function listForkedVideos(userId: string): Promise<Video[]> {
+  if (hasSupabase) return repo.listForkedVideosRows(userId);
+  // 本地保底：从本地视频中找 parent_id 属于该用户、且非该用户发布的视频
+  snapshot().hydrate();
+  const myIds = new Set(snapshot().videos.filter((v) => v.author_id === userId).map((v) => v.id));
+  return snapshot().videos.filter(
+    (v) => v.parent_id !== null && myIds.has(v.parent_id) && v.author_id !== userId && v.status === 'ready',
+  );
+}
