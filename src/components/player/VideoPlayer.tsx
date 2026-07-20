@@ -72,9 +72,35 @@ export function VideoPlayer({
   const [trackWidth, setTrackWidth] = useState(0);
   const userPausedRef = useRef(false);
   const wasPlayingBeforeScrubRef = useRef(false);
+  const switchingRef = useRef(false); // 换段进行中，避免重复触发
+
+  // 切到第 idx 段：用 replaceAsync 等新片段加载好再 play，避免交界处卡住/需手动点。
+  // seekTo 传入则在加载后 seek 到段内时间（跨段拖动用）。
+  const switchToClip = (idx: number, autoPlay: boolean, seekTo?: number) => {
+    if (idx < 0 || idx >= clipList.length) return;
+    clipIndexRef.current = idx;
+    setClipIndex(idx);
+    switchingRef.current = true;
+    player.replaceAsync(clipList[idx]!.videoUrl)
+      .then(() => {
+        if (seekTo != null) {
+          try { player.currentTime = seekTo; } catch {}
+        }
+        if (autoPlay && isActiveRef.current && !userPausedRef.current) player.play();
+      })
+      .catch(() => {
+        // 加载失败兜底：同步 replace + play
+        try { player.replace(clipList[idx]!.videoUrl); if (autoPlay) player.play(); } catch {}
+      })
+      .finally(() => { switchingRef.current = false; });
+  };
 
   // Big play icon overlay animation
   const playIconScale = useSharedValue(0);
+
+  // 记录 active 状态供异步回调读取（闭包里不能直接依赖 isActive）
+  const isActiveRef = useRef(isActive);
+  useEffect(() => { isActiveRef.current = isActive; }, [isActive]);
 
   const totalDuration = () => clipDurationsRef.current.reduce((a, b) => a + b, 0);
   const elapsedBefore = (idx: number) =>
@@ -100,15 +126,9 @@ export function VideoPlayer({
       if (!isChain) return;
       const next = clipIndexRef.current + 1;
       if (next < clipList.length) {
-        clipIndexRef.current = next;
-        setClipIndex(next);
-        player.replace(clipList[next]!.videoUrl);
-        player.play();
+        switchToClip(next, true);
       } else if (looping) {
-        clipIndexRef.current = 0;
-        setClipIndex(0);
-        player.replace(clipList[0]!.videoUrl);
-        player.play();
+        switchToClip(0, true);
       }
     });
     return () => {
@@ -133,13 +153,13 @@ export function VideoPlayer({
     if (isActive) userPausedRef.current = false;
   }, [isActive]);
 
-  // 切换到新的一组片段(打开另一个视频)时，回到第 0 段从头播
+  // 切换到新的一组片段(打开另一个视频)时，回到第 0 段从头播。
+  // 跳过首次挂载（player 已用 clipList[0] 初始化，无需重复 replace）。
+  const didMountRef = useRef(false);
   useEffect(() => {
-    clipIndexRef.current = 0;
-    setClipIndex(0);
+    if (!didMountRef.current) { didMountRef.current = true; return; }
     setProgress(0);
-    player.replace(clipList[0]!.videoUrl);
-    if (isActive && !userPausedRef.current) player.play();
+    switchToClip(0, true);
     // clipList 引用变化即视为换了内容
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clipList]);
@@ -192,9 +212,11 @@ export function VideoPlayer({
         }
         const localTime = Math.max(0, target - acc);
         if (idx !== clipIndexRef.current) {
-          clipIndexRef.current = idx;
-          setClipIndex(idx);
-          player.replace(clipList[idx]!.videoUrl);
+          // 跨段：加载目标段后再 seek + 恢复播放
+          switchToClip(idx, wasPlayingBeforeScrubRef.current, localTime);
+          setProgress(p);
+          setScrubProgress(null);
+          return;
         }
         try { player.currentTime = localTime; } catch {}
       } else {
@@ -241,6 +263,8 @@ export function VideoPlayer({
           contentFit="cover"
           nativeControls={false}
           allowsPictureInPicture={false}
+          // Android：换段(replaceAsync)时不拉起遮罩，保留上一帧，减少交界处黑屏闪烁
+          useExoShutter={false}
         />
         <Animated.View pointerEvents="none" style={[styles.playIconWrap, playIconStyle]}>
           <View style={styles.playIconBg}>
