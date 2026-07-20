@@ -7,7 +7,7 @@
 // - 应用切到后台不影响轮询(MVP 阶段);M3 会迁到 Edge Function + Realtime
 import { create } from 'zustand';
 import { router } from 'expo-router';
-import type { EditMetadata, Video } from '@/api/types';
+import type { Video } from '@/api/types';
 import { defaultProvider } from '@/ai/VideoGenProvider';
 import { useLocalVideos, makeNewVideo } from './videos';
 import { useAuth } from './auth';
@@ -17,9 +17,11 @@ import { showDialog } from '@/components/dialog/ConfirmDialog';
 import { hasSupabase } from '@/api/client';
 import { callGenerate, CreditsExhaustedError } from '@/api/supabase/generateClient';
 import { grantCreditsRemote } from '@/api/supabase/creditsRepo';
+import { uploadTailFrame } from '@/api/supabase/framesRepo';
+import { extractLastFrame } from '@/hooks/useVideoThumbnail';
 import { queryClient } from '@/api/queryClient';
 
-export type JobKind = 'text_to_video' | 'continuation' | 'prompt_remix' | 'edit_publish';
+export type JobKind = 'text_to_video' | 'continuation' | 'prompt_remix';
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 
 export interface AiJobRecord {
@@ -36,7 +38,6 @@ export interface AiJobRecord {
   createdAt: number;
   finishedAt?: number;
   finishedVideoId?: string;  // 完成后跳详情用
-  editMetadata?: EditMetadata;
 }
 
 interface JobsStore {
@@ -181,14 +182,13 @@ async function pollUntilDone(rec: AiJobRecord, externalJobId: string): Promise<{
 function finalize(rec: AiJobRecord, result: {
   videoUrl: string; thumbnailUrl?: string; tailFrameUrl?: string;
   durationMs?: number; width?: number; height?: number;
-}, parent?: Video, editMetadata?: EditMetadata) {
+}, parent?: Video) {
   // cancel guard #3:即使 poll 已经返回 succeeded,中间可能用户已经 cancel 了
   const cur = useJobsStoreInternal.getState().jobs.find((j) => j.id === rec.id);
   if (!cur || cur.status === 'cancelled') return;
 
   const remixKind = rec.kind === 'continuation' ? 'continuation' :
-    rec.kind === 'prompt_remix' ? 'prompt_remix' :
-    rec.kind === 'edit_publish' ? 'edit' : undefined;
+    rec.kind === 'prompt_remix' ? 'prompt_remix' : undefined;
   const video = makeNewVideo({
     authorId: rec.ownerUserId === 'anon' ? null : rec.ownerUserId,
     authorUsername: rec.ownerUsername, // 用提交时快照,不读当前登录态
@@ -196,7 +196,6 @@ function finalize(rec: AiJobRecord, result: {
     parent,
     remixKind,
     aiProvider: defaultProvider.name,
-    editMetadata,
     ...result,
   });
   useLocalVideos.getState().addVideo(video);
@@ -226,7 +225,7 @@ function fail(rec: AiJobRecord, err: any) {
     finishedAt: Date.now(),
   });
   // 失败/取消都退还额度——仅保底模式在客户端扣减,Supabase 模式由 Edge Function 负责。
-  if (!hasSupabase && rec.ownerUserId !== 'anon' && rec.kind !== 'edit_publish') {
+  if (!hasSupabase && rec.ownerUserId !== 'anon') {
     useCredits.getState().refund(rec.ownerUserId);
   }
   if (wasCancelled) return;
@@ -323,10 +322,30 @@ export async function submitTextToVideo(opts: SubmitTextOptions): Promise<AiJobR
   return rec;
 }
 
+// 解析续写首帧：拿到上一段视频「最后一帧」的公开 URL 传给豆包（图生视频）。
+// 豆包服务端 fetch 图片，必须是公开 URL，不能是本地 file://。
+// 1) 已有 tail_frame_url（demo 视频回填过 / 未来回填）→ 直接用
+// 2) Supabase 模式且无尾帧 → 客户端抽末帧 + 上传 thumbnails 得公开 URL
+// 3) 兜底 → thumbnail_url ?? undefined（退化为纯文生，行为同旧版）
+async function resolveContinuationFrame(rec: AiJobRecord, parentVideo: Video): Promise<string | undefined> {
+  if (parentVideo.tail_frame_url) return parentVideo.tail_frame_url;
+  if (hasSupabase && parentVideo.video_url) {
+    try {
+      useJobsStoreInternal.getState().patch(rec.id, { statusMsg: '正在提取上一段末帧...' });
+      const localUri = await extractLastFrame(parentVideo.video_url, parentVideo.duration_ms);
+      if (localUri) {
+        const publicUrl = await uploadTailFrame(localUri, parentVideo.id);
+        return publicUrl;
+      }
+    } catch {
+      // 抽帧/上传失败不阻断，退回兜底
+    }
+  }
+  return parentVideo.thumbnail_url ?? undefined;
+}
+
 export async function submitContinuation(opts: SubmitContinuationOptions): Promise<AiJobRecord> {
   const author = authorOfNew();
-  // 兜底：优先用尾帧，无则用缩略图，两者都没有时传 undefined（Edge Function/Provider 退化文生）
-  const frameUrl = opts.parentVideo.tail_frame_url ?? opts.parentVideo.thumbnail_url ?? undefined;
   const rec: AiJobRecord = {
     id: newId(),
     ownerUserId: author.id,
@@ -342,6 +361,7 @@ export async function submitContinuation(opts: SubmitContinuationOptions): Promi
   if (hasSupabase) {
     (async () => {
       try {
+        const frameUrl = await resolveContinuationFrame(rec, opts.parentVideo);
         await runWithSupabase(
           rec,
           {
@@ -357,6 +377,8 @@ export async function submitContinuation(opts: SubmitContinuationOptions): Promi
       }
     })();
   } else {
+    // 兜底（本地 mock）：优先用尾帧，无则用缩略图
+    const frameUrl = opts.parentVideo.tail_frame_url ?? opts.parentVideo.thumbnail_url ?? undefined;
     (async () => {
       try {
         let externalJobId: string;

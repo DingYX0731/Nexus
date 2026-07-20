@@ -28,6 +28,23 @@ async function ensureThumbnail(videoUrl: string): Promise<string | null> {
 }
 
 /**
+ * 抽取视频接近末尾的一帧,返回 file:// URI。用于续写:把上一段视频的最后一帧当作新视频首帧。
+ * 豆包不返回视频末帧,所以由客户端在这里抽。
+ * @param videoUrl 视频地址
+ * @param durationMs 视频时长(毫秒),用于定位末帧;缺省时退回抽 1s 处
+ */
+export async function extractLastFrame(videoUrl: string, durationMs?: number | null): Promise<string | null> {
+  // 定位到结尾前 ~120ms,避开某些编码最后一帧解不出的情况;时长未知时退回 1s。
+  const time = durationMs && durationMs > 200 ? Math.max(0, durationMs - 120) : 1000;
+  try {
+    const { uri } = await VideoThumbnails.getThumbnailAsync(videoUrl, { time, quality: 0.8 });
+    return uri;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * 返回视频首帧 file:// URI。
  * 第一次调用会异步抽帧;之后命中缓存立即返回。
  * 如果传入了 fallback 且抽帧未完成,会先返回 fallback。
