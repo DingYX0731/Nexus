@@ -74,67 +74,80 @@ export function VideoPlayer({
   const wasPlayingBeforeScrubRef = useRef(false);
   const switchingRef = useRef(false); // 换段进行中，避免重复触发
 
-  // 切到第 idx 段：用 replaceAsync 等新片段加载好再 play，避免交界处卡住/需手动点。
-  // seekTo 传入则在加载后 seek 到段内时间（跨段拖动用）。
-  //
-  // 关键：换段后不能只靠 replaceAsync().then(play) —— replaceAsync resolve 时新片段
-  // 未必到了可播状态，此时 play() 会被忽略，表现为「交界处暂停、需手点」。
-  // 改为状态驱动：置 pendingPlayRef，等 statusChange 变 readyToPlay 时（见下方监听）再 play。
-  const pendingPlayRef = useRef(false);
+  // 换段播放的实现见下方 pumpPlay：换源后有界重试直到真的在 playing，
+  // 不赌单个 statusChange 事件是否触发（那是新片段偶发暂停的根因）。
   const pendingSeekRef = useRef<number | undefined>(undefined);
   const unmountedRef = useRef(false);         // 组件已卸载 → 原生 player 可能已释放，禁止再访问
-  const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pumpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isActiveRef = useRef(isActive);       // 供异步回调读取当前 active 状态
+  const [isTransitioning, setIsTransitioning] = useState(false); // 换段过渡中(用于隐藏暂停图标)
+  useEffect(() => { isActiveRef.current = isActive; }, [isActive]);
 
-  // 卸载时清理：标记 unmounted + 清掉兜底定时器，避免删视频后回调访问已释放的 player 崩溃。
+  // 卸载时清理：标记 unmounted + 清掉重试定时器，避免删视频后回调访问已释放的 player 崩溃。
   useEffect(() => () => {
     unmountedRef.current = true;
-    if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
+    if (pumpTimerRef.current) clearTimeout(pumpTimerRef.current);
   }, []);
+
+  const endTransition = () => {
+    switchingRef.current = false;
+    if (pumpTimerRef.current) { clearTimeout(pumpTimerRef.current); pumpTimerRef.current = null; }
+    setIsTransitioning(false);
+  };
+
+  // 换段后「泵」播放：每 50ms 重试一次，直到播放器真的在 playing 为止（最多 ~2s 上限）。
+  // 不依赖单个 statusChange 事件是否精确触发——那正是新片段偶发暂停的根因。
+  const pumpPlay = (attempt: number) => {
+    if (unmountedRef.current || !switchingRef.current) return;
+    // 用户中途手动暂停 → 放弃泵，尊重用户意图
+    if (userPausedRef.current || !isActiveRef.current) { endTransition(); return; }
+    let ready = false;
+    try { ready = player.status === 'readyToPlay'; } catch { endTransition(); return; }
+    if (ready) {
+      try {
+        if (pendingSeekRef.current != null) {
+          player.currentTime = pendingSeekRef.current;
+          pendingSeekRef.current = undefined;
+        }
+        player.play();
+      } catch { /* player 已释放 */ endTransition(); return; }
+      let playing = false;
+      try { playing = player.playing; } catch { /* ignore */ }
+      if (playing) { endTransition(); return; }  // 确认已在播放才收工
+    }
+    if (attempt < 40) {
+      pumpTimerRef.current = setTimeout(() => pumpPlay(attempt + 1), 50);
+    } else {
+      endTransition(); // 2s 兜底：放弃，避免无限循环
+    }
+  };
 
   const switchToClip = (idx: number, autoPlay: boolean, seekTo?: number) => {
     if (idx < 0 || idx >= clipList.length || unmountedRef.current) return;
     clipIndexRef.current = idx;
     setClipIndex(idx);
     switchingRef.current = true;
-    pendingPlayRef.current = autoPlay;
     pendingSeekRef.current = seekTo;
-    // 先尝试同步 replace（部分平台 replace 已够快），真正的 play 交给 statusChange。
+    if (autoPlay) setIsTransitioning(true);
+    // 同步 replace 换源；真正的 play 交给 pumpPlay 有界重试保证。
     try { player.replace(clipList[idx]!.videoUrl); } catch {
       try { player.replaceAsync(clipList[idx]!.videoUrl); } catch {}
     }
-    // 兜底：若新片段已就绪（statusChange 可能不再触发），下一 tick 直接尝试播放。
-    if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
-    fallbackTimerRef.current = setTimeout(() => {
-      fallbackTimerRef.current = null;
-      if (unmountedRef.current || !switchingRef.current) return;
-      try {
-        if (player.status === 'readyToPlay') tryFlushPending();
-      } catch { /* player 已释放，忽略 */ }
-    }, 60);
-  };
-
-  // 尝试执行挂起的 play/seek —— 只在片段就绪后调用。player 可能已释放，全程容错。
-  const tryFlushPending = () => {
-    if (unmountedRef.current) return;
-    try {
+    if (pumpTimerRef.current) { clearTimeout(pumpTimerRef.current); pumpTimerRef.current = null; }
+    if (autoPlay) {
+      pumpPlay(0);
+    } else {
+      // 不自动播（如拖动到暂停态）：只处理 seek
       if (pendingSeekRef.current != null) {
-        player.currentTime = pendingSeekRef.current;
+        try { player.currentTime = pendingSeekRef.current; } catch {}
         pendingSeekRef.current = undefined;
       }
-      if (pendingPlayRef.current) {
-        if (isActiveRef.current && !userPausedRef.current) player.play();
-        pendingPlayRef.current = false;
-      }
-    } catch { /* player 已释放，忽略 */ }
-    switchingRef.current = false;
+      switchingRef.current = false;
+    }
   };
 
   // Big play icon overlay animation
   const playIconScale = useSharedValue(0);
-
-  // 记录 active 状态供异步回调读取（闭包里不能直接依赖 isActive）
-  const isActiveRef = useRef(isActive);
-  useEffect(() => { isActiveRef.current = isActive; }, [isActive]);
 
   const totalDuration = () => clipDurationsRef.current.reduce((a, b) => a + b, 0);
   const elapsedBefore = (idx: number) =>
@@ -143,12 +156,6 @@ export function VideoPlayer({
   // Subscribe to player events
   useEffect(() => {
     const subPlaying = player.addListener('playingChange', ({ isPlaying: p }) => setIsPlaying(p));
-    // 片段就绪即执行挂起的 seek/play：这是修复「交界处暂停需手点」的关键。
-    const subStatus = player.addListener('statusChange', ({ status }) => {
-      if (status === 'readyToPlay' && switchingRef.current) {
-        tryFlushPending();
-      }
-    });
     const subTime = player.addListener('timeUpdate', ({ currentTime }) => {
       const dur = player.duration;
       const i = clipIndexRef.current;
@@ -173,7 +180,6 @@ export function VideoPlayer({
     });
     return () => {
       subPlaying.remove();
-      subStatus.remove();
       subTime.remove();
       subEnd.remove();
     };
@@ -224,8 +230,11 @@ export function VideoPlayer({
     );
   };
 
+  // 换段过渡中(isTransitioning)强制隐藏播放图标——否则每段播完的空档会闪一下暂停图标。
+  // 只有「用户主动暂停」(userPausedRef)时才显示。
+  const showPlayIcon = !isPlaying && !isTransitioning && userPausedRef.current;
   const playIconStyle = useAnimatedStyle(() => ({
-    opacity: isPlaying ? 0 : 1,
+    opacity: showPlayIcon ? 1 : 0,
     transform: [{ scale: playIconScale.value }],
   }));
 
