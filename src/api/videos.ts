@@ -7,7 +7,7 @@ import * as repo from '@/api/supabase/videosRepo';
 import * as commentsRepo from '@/api/supabase/commentsRepo';
 import { callGenerate } from '@/api/supabase/generateClient';
 
-export type { Video, VersionNode } from './types';
+export type { Video, VersionNode, RemixKind } from './types';
 export type { ChainClip } from '@/api/supabase/videosRepo';
 
 function snapshot() {
@@ -90,6 +90,7 @@ export async function getContinuationChain(leafId: string): Promise<repo.ChainCl
     duration_ms: v.duration_ms ?? null,
     prompt: v.prompt,
     status: v.status,
+    created_at: v.created_at,
   }));
   return repo.buildChain(leafId, nodes);
 }

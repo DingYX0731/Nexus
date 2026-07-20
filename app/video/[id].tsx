@@ -1,11 +1,10 @@
 import { View, Text, Pressable, StyleSheet, ScrollView, Share, Alert } from 'react-native';
-import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, GitBranch, Heart, MessageCircle, Share2, Home, Info, Globe, Lock, Trash2 } from 'lucide-react-native';
 import { useState } from 'react';
-import { getVideo, getVersionTree, getContinuationChain, toggleLike, setVisibility as daoSetVisibility, deleteVideo as daoDeleteVideo, type VersionNode } from '@/api/videos';
+import { getVideo, getContinuationChain, toggleLike, setVisibility as daoSetVisibility, deleteVideo as daoDeleteVideo, type RemixKind } from '@/api/videos';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { CommentsSheet } from '@/components/comments/CommentsSheet';
 import { useComments } from '@/store/comments';
@@ -17,7 +16,6 @@ import { useAuth } from '@/store/auth';
 import { hasSupabase } from '@/api/client';
 import { LoadingState, ErrorState, EmptyState } from '@/components/ui/ScreenState';
 import { FollowButton } from '@/components/social/FollowButton';
-import { UserAvatar } from '@/components/ui/UserAvatar';
 
 export default function VideoDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -45,12 +43,6 @@ export default function VideoDetail() {
 
   const isLoading = hasSupabase ? videoLoading : false;
   const isError = hasSupabase ? videoError : false;
-
-  const { data: tree = [] } = useQuery({
-    queryKey: ['tree', video?.root_id ?? id],
-    queryFn: () => getVersionTree(video!.root_id ?? video!.id),
-    enabled: !!video,
-  });
 
   // 续写连贯播放：从根到当前视频的所有片段，依次连播
   const { data: chain = [] } = useQuery({
@@ -262,49 +254,46 @@ export default function VideoDetail() {
           />
         </View>
 
-        {tree.length > 1 && (
-          <View style={styles.tree}>
-            <View style={styles.treeHeader}>
+        {isChain && (
+          <View style={styles.stepper}>
+            <View style={styles.stepperHeader}>
               <GitBranch color={colors.accent} size={14} />
-              <Text style={styles.treeTitle}>版本树 · {tree.length} 个版本</Text>
+              <Text style={styles.stepperTitle}>完整故事 · {chain.length} 集</Text>
+              <Text style={styles.stepperHint}>点任意集可跳转</Text>
             </View>
-            {tree.slice(0, 20).map((node) => (
-              <View key={node.id} style={[styles.treeCard, node.id === id && styles.treeCardActive, { marginLeft: node.depth * 16 }]}>
-                <Pressable
-                  style={styles.treeCardMain}
-                  onPress={() => router.replace(`/video/${node.id}` as any)}
-                >
-                  {/* 缩略图 */}
-                  {node.thumbnail_url ? (
-                    <Image source={{ uri: node.thumbnail_url }} style={styles.treeThumb} contentFit="cover" />
-                  ) : (
-                    <View style={[styles.treeThumb, styles.treeThumbPlaceholder]} />
-                  )}
-                  {/* 文字区 */}
-                  <View style={styles.treeCardContent}>
-                    <View style={styles.treeCardRow}>
-                      <UserAvatar user={{ username: node.author_username, avatar_url: node.author_avatar_url }} size={20} />
-                      <Text style={styles.treeCardAuthor} numberOfLines={1}>@{node.author_username ?? '?'}</Text>
-                      <View style={styles.treeKindBadge}>
-                        <Text style={styles.treeKindText}>{kindLabelShort(node.remix_kind)}</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.stepperTrack}
+            >
+              {chain.map((clip, idx) => {
+                const isCurrent = clip.id === id;
+                return (
+                  <View key={clip.id} style={styles.stepItemWrap}>
+                    {idx > 0 && <View style={styles.stepConnector} />}
+                    <Pressable
+                      style={[styles.stepItem, isCurrent && styles.stepItemActive]}
+                      onPress={() => { if (!isCurrent) router.replace(`/video/${clip.id}` as any); }}
+                    >
+                      <View style={[styles.stepNum, isCurrent && styles.stepNumActive]}>
+                        <Text style={[styles.stepNumText, isCurrent && styles.stepNumTextActive]}>{idx + 1}</Text>
                       </View>
-                    </View>
-                    <Text style={styles.treeCardPrompt} numberOfLines={1}>
-                      {node.prompt?.slice(0, 40) ?? '(无描述)'}
-                    </Text>
+                      <Text style={[styles.stepCaption, isCurrent && styles.stepCaptionActive]} numberOfLines={2}>
+                        {clip.prompt?.slice(0, 24) ?? `第 ${idx + 1} 段`}
+                      </Text>
+                    </Pressable>
                   </View>
-                </Pressable>
-                {/* 从此续写按钮 */}
-                <Pressable
-                  style={styles.treeRemixBtn}
-                  hitSlop={6}
-                  onPress={() => router.push(`/remix/${node.id}` as any)}
-                >
-                  <GitBranch color={colors.accent} size={14} />
-                  <Text style={styles.treeRemixText}>续写</Text>
-                </Pressable>
-              </View>
-            ))}
+                );
+              })}
+            </ScrollView>
+            {/* 从当前这一集继续续写 */}
+            <Pressable
+              style={styles.stepperRemixBtn}
+              onPress={() => router.push(`/remix/${id}` as any)}
+            >
+              <GitBranch color={colors.accent} size={14} />
+              <Text style={styles.stepperRemixText}>从这一集续写</Text>
+            </Pressable>
           </View>
         )}
       </ScrollView>
@@ -327,18 +316,10 @@ function ActionBtn({ icon, label, onPress }: { icon: React.ReactNode; label: str
   );
 }
 
-function kindLabel(k: VersionNode['remix_kind']) {
+function kindLabel(k: RemixKind | null) {
   switch (k) {
     case 'continuation': return '续写自他人';
     case 'prompt_remix': return 'Remix 自他人';
-    default: return '原视频';
-  }
-}
-
-function kindLabelShort(k: VersionNode['remix_kind']) {
-  switch (k) {
-    case 'continuation': return '续写';
-    case 'prompt_remix': return 'Remix';
     default: return '原视频';
   }
 }
@@ -410,40 +391,31 @@ const styles = StyleSheet.create({
   actionBtn: { alignItems: 'center', gap: 6, minWidth: 56 },
   actionLbl: { ...typography.tiny, color: colors.text },
 
-  tree: { padding: spacing.lg, gap: spacing.sm },
-  treeHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.xs },
-  treeTitle: { ...typography.captionStrong, color: colors.text },
-  // legacy simple row (unused after upgrade, kept for type safety)
-  treeRow: {
-    flexDirection: 'row', gap: spacing.sm, alignItems: 'center',
-    padding: spacing.sm, borderRadius: radius.sm,
+  // 分集步道条：水平展示 root→leaf 的每一集，高亮当前，可跳转
+  stepper: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, gap: spacing.sm },
+  stepperHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  stepperTitle: { ...typography.captionStrong, color: colors.text },
+  stepperHint: { ...typography.tiny, color: colors.textDim, marginLeft: 'auto' },
+  stepperTrack: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: spacing.xs },
+  stepItemWrap: { flexDirection: 'row', alignItems: 'center' },
+  stepConnector: { width: 16, height: 2, backgroundColor: colors.border, marginTop: 14 },
+  stepItem: { width: 76, alignItems: 'center', gap: 6, paddingVertical: spacing.xs },
+  stepItemActive: {},
+  stepNum: {
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border,
+    alignItems: 'center', justifyContent: 'center',
   },
-  treeRowActive: { backgroundColor: colors.surface },
-  treeBullet: { color: colors.textMuted, fontFamily: 'Courier', fontSize: 12 },
-  treeText: { color: colors.textSecondary, ...typography.caption, flex: 1 },
-  // card styles
-  treeCard: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: colors.surface, borderRadius: radius.sm,
+  stepNumActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  stepNumText: { ...typography.captionStrong, color: colors.textMuted },
+  stepNumTextActive: { color: '#fff' },
+  stepCaption: { ...typography.tiny, color: colors.textMuted, textAlign: 'center', lineHeight: 14 },
+  stepCaptionActive: { color: colors.text, fontWeight: '600' },
+  stepperRemixBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+    paddingVertical: spacing.sm, marginTop: spacing.xs,
+    backgroundColor: colors.surface, borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border,
-    overflow: 'hidden',
   },
-  treeCardActive: { borderColor: colors.primary, borderWidth: 1.5 },
-  treeCardMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.sm },
-  treeThumb: { width: 40, height: 56, borderRadius: 4 },
-  treeThumbPlaceholder: { backgroundColor: colors.surfaceAlt },
-  treeCardContent: { flex: 1, gap: 4 },
-  treeCardRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  treeCardAuthor: { ...typography.tiny, color: colors.textSecondary, flex: 1 },
-  treeKindBadge: {
-    backgroundColor: colors.accentSoft, paddingHorizontal: 5, paddingVertical: 2, borderRadius: 3,
-  },
-  treeKindText: { ...typography.tiny, color: colors.accent, fontWeight: '600' },
-  treeCardPrompt: { ...typography.tiny, color: colors.textMuted },
-  treeRemixBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 3,
-    paddingHorizontal: spacing.sm, paddingVertical: spacing.sm,
-    borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: colors.border,
-  },
-  treeRemixText: { ...typography.tiny, color: colors.accent, fontWeight: '600' },
+  stepperRemixText: { ...typography.caption, color: colors.accent, fontWeight: '600' },
 });

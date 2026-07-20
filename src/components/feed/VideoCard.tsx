@@ -5,9 +5,9 @@ import { Heart, GitBranch, MessageCircle, Share2 } from 'lucide-react-native';
 import Animated, {
   useSharedValue, useAnimatedStyle, withSpring, withSequence,
 } from 'react-native-reanimated';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Video } from '@/api/types';
-import { toggleLike as daoToggleLike } from '@/api/videos';
+import { toggleLike as daoToggleLike, getContinuationChain } from '@/api/videos';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { CommentsSheet } from '@/components/comments/CommentsSheet';
 import { showAuthRequired } from '@/components/dialog/ConfirmDialog';
@@ -29,6 +29,18 @@ export function VideoCard({ video, isActive }: { video: Video; isActive: boolean
 
   // Seed comments on mount so the count is non-zero in the feed
   useEffect(() => { ensureSeeded(video.id); }, [video.id, ensureSeeded]);
+
+  // 续写视频(depth>0)在 feed 里也从根连贯播放：仅在该卡激活时拉链，避免整屏请求。
+  const isContinuation = (video.depth ?? 0) > 0;
+  const { data: chain = [] } = useQuery({
+    queryKey: ['chain', video.id],
+    queryFn: () => getContinuationChain(video.id),
+    enabled: isActive && isContinuation && video.status === 'ready',
+    staleTime: 5 * 60_000,
+  });
+  const clips = chain.length > 1
+    ? chain.map((c) => ({ videoUrl: c.videoUrl, durationMs: c.durationMs }))
+    : undefined;
 
   const heartScale = useSharedValue(1);
   const heartStyle = useAnimatedStyle(() => ({ transform: [{ scale: heartScale.value }] }));
@@ -125,6 +137,7 @@ export function VideoCard({ video, isActive }: { video: Video; isActive: boolean
       {isActive ? (
         <VideoPlayer
           videoUrl={video.video_url}
+          clips={clips}
           isActive
           looping
           showProgress

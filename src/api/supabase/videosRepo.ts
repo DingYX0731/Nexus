@@ -71,19 +71,19 @@ export interface ChainClip {
   prompt: string | null;
 }
 
-export async function getContinuationChainRows(leafId: string): Promise<ChainClip[]> {
-  // 先拿 leaf 的 root_id
-  const { data: leaf, error: leafErr } = await supabase()
-    .from('videos').select('root_id').eq('id', leafId).maybeSingle();
-  if (leafErr) throw leafErr;
-  if (!leaf) return [];
+export async function getContinuationChainRows(videoId: string): Promise<ChainClip[]> {
+  // 先拿当前视频的 root_id
+  const { data: cur, error: curErr } = await supabase()
+    .from('videos').select('root_id').eq('id', videoId).maybeSingle();
+  if (curErr) throw curErr;
+  if (!cur) return [];
   // 查同一棵树的全部节点（只取拼接需要的字段）
   const { data, error } = await supabase()
     .from('videos')
-    .select('id,parent_id,video_url,duration_ms,prompt,status')
-    .eq('root_id', (leaf as { root_id: string }).root_id);
+    .select('id,parent_id,video_url,duration_ms,prompt,status,created_at')
+    .eq('root_id', (cur as { root_id: string }).root_id);
   if (error) throw error;
-  return buildChain(leafId, (data ?? []) as ChainNode[]);
+  return buildChain(videoId, (data ?? []) as ChainNode[]);
 }
 
 interface ChainNode {
@@ -93,22 +93,37 @@ interface ChainNode {
   duration_ms: number | null;
   prompt: string | null;
   status: string;
+  created_at: string;
 }
 
-// 从 leaf 沿 parent_id 回溯到根，反转成 root→leaf，过滤掉未就绪/空 URL 的片段。
+// 构造"主线"续写链：从根出发，每一步沿"最早创建的子节点"往下走到叶子，得到一条完整主路径。
+// 无论传入的是根、中间还是叶子节点，只要它在这棵树的主线上，都返回同一条链（供步道条高亮不同节点）。
 // 导出供本地保底路径复用。
-export function buildChain(leafId: string, nodes: ChainNode[]): ChainClip[] {
+export function buildChain(videoId: string, nodes: ChainNode[]): ChainClip[] {
   const byId = new Map(nodes.map((n) => [n.id, n]));
-  const chain: ChainNode[] = [];
-  const seen = new Set<string>(); // 防御父子成环导致死循环
-  let cur = byId.get(leafId);
-  while (cur && !seen.has(cur.id)) {
-    seen.add(cur.id);
-    chain.push(cur);
-    cur = cur.parent_id ? byId.get(cur.parent_id) : undefined;
+  // 找根：沿 parent_id 一路向上
+  let root = byId.get(videoId);
+  const upSeen = new Set<string>();
+  while (root && root.parent_id && byId.has(root.parent_id) && !upSeen.has(root.id)) {
+    upSeen.add(root.id);
+    root = byId.get(root.parent_id!);
   }
-  chain.reverse(); // root → leaf
-  return chain
+  if (!root) return [];
+  // 预排序：同一父的多个子，按 created_at 升序，取最早的作为主线延续
+  const childrenOf = (pid: string) =>
+    nodes
+      .filter((n) => n.parent_id === pid)
+      .sort((a, b) => a.created_at.localeCompare(b.created_at));
+  // 从根沿最早子往下，构成主线
+  const mainline: ChainNode[] = [];
+  const downSeen = new Set<string>();
+  let node: ChainNode | undefined = root;
+  while (node && !downSeen.has(node.id)) {
+    downSeen.add(node.id);
+    mainline.push(node);
+    node = childrenOf(node.id)[0];
+  }
+  return mainline
     .filter((n) => n.status === 'ready' && n.video_url)
     .map((n) => ({ id: n.id, videoUrl: n.video_url, durationMs: n.duration_ms, prompt: n.prompt }));
 }
