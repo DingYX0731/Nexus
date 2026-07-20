@@ -99,14 +99,21 @@ Deno.serve(async (req) => {
 
     // succeeded：转存 Storage（只在这一次发生）
     try {
+      // 主视频转存成功 = 生成成功。这是硬性成功条件。
       const videoUrl = await store(
         admin, 'videos', `${user.id}/${videoId}.mp4`, task.videoUrl!, 'video/mp4',
       );
+      // 缩略图是「尽力而为」：豆包对文生/续写常不返回 image_url，且缩略图失败不该拖垮整体。
+      // 单独 try/catch，失败就置空，绝不影响主视频判定为 ready。
       let thumbUrl: string | null = null;
       if (task.tailFrameUrl) {
-        thumbUrl = await store(
-          admin, 'thumbnails', `${user.id}/${videoId}.jpg`, task.tailFrameUrl, 'image/jpeg',
-        );
+        try {
+          thumbUrl = await store(
+            admin, 'thumbnails', `${user.id}/${videoId}.jpg`, task.tailFrameUrl, 'image/jpeg',
+          );
+        } catch (_thumbErr) {
+          thumbUrl = null; // 缩略图失败无所谓
+        }
       }
       await admin.from('videos').update({
         status: 'ready',
@@ -124,6 +131,12 @@ Deno.serve(async (req) => {
       if (ageMs < GIVE_UP_MS) {
         // 保持 generating，让客户端下次 poll 再试
         return json({ status: 'generating', videoId }, 200);
+      }
+      // 写 failed 前再查一次状态：防止并发 poll 中另一路已写成 ready，被这里覆盖。
+      const { data: latest } = await admin
+        .from('videos').select('status').eq('id', videoId).maybeSingle();
+      if (latest?.status === 'ready') {
+        return json({ status: 'ready', videoId }, 200);
       }
       await admin.from('videos').update({ status: 'failed' }).eq('id', videoId);
       const { data: cRow } = await admin
