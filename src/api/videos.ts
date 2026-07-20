@@ -8,6 +8,7 @@ import * as commentsRepo from '@/api/supabase/commentsRepo';
 import { callGenerate } from '@/api/supabase/generateClient';
 
 export type { Video, VersionNode } from './types';
+export type { ChainClip } from '@/api/supabase/videosRepo';
 
 function snapshot() {
   return useLocalVideos.getState();
@@ -76,6 +77,21 @@ export async function listUserVideos(userId: string): Promise<Video[]> {
   return snapshot().videos.filter(
     (v) => v.author_id === userId && v.visibility === 'public' && v.status === 'ready',
   );
+}
+
+// 续写祖先链：root→leaf 的可播放片段，供详情页连贯播放。
+export async function getContinuationChain(leafId: string): Promise<repo.ChainClip[]> {
+  if (hasSupabase) return repo.getContinuationChainRows(leafId);
+  snapshot().hydrate();
+  const nodes = snapshot().videos.map((v) => ({
+    id: v.id,
+    parent_id: v.parent_id,
+    video_url: v.video_url,
+    duration_ms: v.duration_ms ?? null,
+    prompt: v.prompt,
+    status: v.status,
+  }));
+  return repo.buildChain(leafId, nodes);
 }
 
 export async function getVersionTree(rootId: string): Promise<VersionNode[]> {

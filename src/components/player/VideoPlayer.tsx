@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, LayoutChangeEvent } from 'react-native';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import Animated, {
@@ -8,8 +8,19 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Play } from 'lucide-react-native';
 import { colors } from '@/theme';
 
+export interface PlayerClip {
+  videoUrl: string;
+  durationMs?: number | null;
+}
+
 interface VideoPlayerProps {
   videoUrl: string;
+  /**
+   * 续写连贯播放：一组片段(root→leaf)。传入时播放器会依次无缝连播，
+   * playToEnd 自动 replace 下一段，进度条反映整条链的总进度。
+   * 不传则回退到单 videoUrl 行为（feed 等）。
+   */
+  clips?: PlayerClip[];
   isActive: boolean;
   muted?: boolean;
   looping?: boolean;
@@ -22,18 +33,41 @@ interface VideoPlayerProps {
 }
 
 export function VideoPlayer({
-  videoUrl, isActive, muted = false, looping = true, overlay,
+  videoUrl, clips, isActive, muted = false, looping = true, overlay,
   showProgress = true, progressBottomOffset = 0,
 }: VideoPlayerProps) {
-  const player = useVideoPlayer(videoUrl, (p) => {
-    p.loop = looping;
+  // clips 模式：多段连播；否则单段。用 useMemo 稳定引用。
+  const clipList = useMemo<PlayerClip[]>(
+    () => (clips && clips.length > 0 ? clips : [{ videoUrl }]),
+    [clips, videoUrl],
+  );
+  const isChain = clipList.length > 1;
+
+  // clips 模式下播放器自己接管连播，关掉原生 loop（靠 playToEnd 手动接段）
+  const player = useVideoPlayer(clipList[0]!.videoUrl, (p) => {
+    p.loop = looping && !isChain;
     p.muted = muted;
     p.timeUpdateEventInterval = 0.25;
   });
 
+  // 当前播放到第几段
+  const clipIndexRef = useRef(0);
+  const [clipIndex, setClipIndex] = useState(0);
+
+  // 每段时长(秒)。片段都是 5s，未知时默认 5，播放时用 player.duration 校准。
+  const DEFAULT_CLIP_SEC = 5;
+  const clipDurationsRef = useRef<number[]>(
+    clipList.map((c) => (c.durationMs && c.durationMs > 0 ? c.durationMs / 1000 : DEFAULT_CLIP_SEC)),
+  );
+  useEffect(() => {
+    clipDurationsRef.current = clipList.map(
+      (c) => (c.durationMs && c.durationMs > 0 ? c.durationMs / 1000 : DEFAULT_CLIP_SEC),
+    );
+  }, [clipList]);
+
   const [isPlaying, setIsPlaying] = useState(true);
-  const [progress, setProgress] = useState(0); // 0..1, current playback progress (from player events)
-  const [duration, setDuration] = useState(0);
+  const [progress, setProgress] = useState(0); // 0..1, 整条链的总进度
+  const [duration, setDuration] = useState(0); // 整条链总时长(秒)
   const [scrubProgress, setScrubProgress] = useState<number | null>(null); // 用户拖动中的临时位置
   const [trackWidth, setTrackWidth] = useState(0);
   const userPausedRef = useRef(false);
@@ -42,24 +76,47 @@ export function VideoPlayer({
   // Big play icon overlay animation
   const playIconScale = useSharedValue(0);
 
+  const totalDuration = () => clipDurationsRef.current.reduce((a, b) => a + b, 0);
+  const elapsedBefore = (idx: number) =>
+    clipDurationsRef.current.slice(0, idx).reduce((a, b) => a + b, 0);
+
   // Subscribe to player events
   useEffect(() => {
     const subPlaying = player.addListener('playingChange', ({ isPlaying: p }) => setIsPlaying(p));
     const subTime = player.addListener('timeUpdate', ({ currentTime }) => {
       const dur = player.duration;
-      if (dur && dur > 0) {
-        setDuration(dur);
-        // 拖动中不要被自动时间更新覆盖
-        if (scrubProgress == null) {
-          setProgress(Math.min(1, Math.max(0, currentTime / dur)));
-        }
+      const i = clipIndexRef.current;
+      // 用真实时长校准当前段
+      if (dur && dur > 0) clipDurationsRef.current[i] = dur;
+      const total = totalDuration();
+      setDuration(total);
+      if (scrubProgress == null && total > 0) {
+        const globalTime = elapsedBefore(i) + Math.min(currentTime, clipDurationsRef.current[i] ?? currentTime);
+        setProgress(Math.min(1, Math.max(0, globalTime / total)));
+      }
+    });
+    // 链模式：一段播完自动接下一段；最后一段结束按 looping 决定回到第 0 段
+    const subEnd = player.addListener('playToEnd', () => {
+      if (!isChain) return;
+      const next = clipIndexRef.current + 1;
+      if (next < clipList.length) {
+        clipIndexRef.current = next;
+        setClipIndex(next);
+        player.replace(clipList[next]!.videoUrl);
+        player.play();
+      } else if (looping) {
+        clipIndexRef.current = 0;
+        setClipIndex(0);
+        player.replace(clipList[0]!.videoUrl);
+        player.play();
       }
     });
     return () => {
       subPlaying.remove();
       subTime.remove();
+      subEnd.remove();
     };
-  }, [player, scrubProgress]);
+  }, [player, scrubProgress, isChain, clipList, looping]);
 
   // Activation: auto play/pause on slide
   useEffect(() => {
@@ -75,6 +132,17 @@ export function VideoPlayer({
   useEffect(() => {
     if (isActive) userPausedRef.current = false;
   }, [isActive]);
+
+  // 切换到新的一组片段(打开另一个视频)时，回到第 0 段从头播
+  useEffect(() => {
+    clipIndexRef.current = 0;
+    setClipIndex(0);
+    setProgress(0);
+    player.replace(clipList[0]!.videoUrl);
+    if (isActive && !userPausedRef.current) player.play();
+    // clipList 引用变化即视为换了内容
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clipList]);
 
   const togglePlay = () => {
     if (player.playing) {
@@ -110,8 +178,28 @@ export function VideoPlayer({
     setScrubProgress(p);
   };
   const onScrubEnd = (p: number) => {
-    if (duration > 0) {
-      try { player.currentTime = p * duration; } catch {}
+    const total = duration > 0 ? duration : totalDuration();
+    if (total > 0) {
+      if (isChain) {
+        // 把全局进度映射到 (第几段, 段内时间)，跨段则先 replace 到目标段再 seek
+        const target = p * total;
+        const durs = clipDurationsRef.current;
+        let acc = 0;
+        let idx = 0;
+        while (idx < durs.length - 1 && acc + (durs[idx] ?? 0) <= target) {
+          acc += durs[idx] ?? 0;
+          idx++;
+        }
+        const localTime = Math.max(0, target - acc);
+        if (idx !== clipIndexRef.current) {
+          clipIndexRef.current = idx;
+          setClipIndex(idx);
+          player.replace(clipList[idx]!.videoUrl);
+        }
+        try { player.currentTime = localTime; } catch {}
+      } else {
+        try { player.currentTime = p * total; } catch {}
+      }
     }
     setProgress(p);
     setScrubProgress(null);

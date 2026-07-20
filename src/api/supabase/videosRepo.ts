@@ -62,6 +62,57 @@ export async function listUserPublicVideosRows(userId: string): Promise<Video[]>
   return withLiked(videos, await likedSet(currentUserId(), videos.map((v) => v.id)));
 }
 
+// 续写祖先链：从叶子沿 parent_id 回溯到根，返回 root→leaf 顺序的可播放片段。
+// 用于详情页连贯播放（每段视频只是 5s 片段，拼起来才是完整故事）。
+export interface ChainClip {
+  id: string;
+  videoUrl: string;
+  durationMs: number | null;
+  prompt: string | null;
+}
+
+export async function getContinuationChainRows(leafId: string): Promise<ChainClip[]> {
+  // 先拿 leaf 的 root_id
+  const { data: leaf, error: leafErr } = await supabase()
+    .from('videos').select('root_id').eq('id', leafId).maybeSingle();
+  if (leafErr) throw leafErr;
+  if (!leaf) return [];
+  // 查同一棵树的全部节点（只取拼接需要的字段）
+  const { data, error } = await supabase()
+    .from('videos')
+    .select('id,parent_id,video_url,duration_ms,prompt,status')
+    .eq('root_id', (leaf as { root_id: string }).root_id);
+  if (error) throw error;
+  return buildChain(leafId, (data ?? []) as ChainNode[]);
+}
+
+interface ChainNode {
+  id: string;
+  parent_id: string | null;
+  video_url: string;
+  duration_ms: number | null;
+  prompt: string | null;
+  status: string;
+}
+
+// 从 leaf 沿 parent_id 回溯到根，反转成 root→leaf，过滤掉未就绪/空 URL 的片段。
+// 导出供本地保底路径复用。
+export function buildChain(leafId: string, nodes: ChainNode[]): ChainClip[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const chain: ChainNode[] = [];
+  const seen = new Set<string>(); // 防御父子成环导致死循环
+  let cur = byId.get(leafId);
+  while (cur && !seen.has(cur.id)) {
+    seen.add(cur.id);
+    chain.push(cur);
+    cur = cur.parent_id ? byId.get(cur.parent_id) : undefined;
+  }
+  chain.reverse(); // root → leaf
+  return chain
+    .filter((n) => n.status === 'ready' && n.video_url)
+    .map((n) => ({ id: n.id, videoUrl: n.video_url, durationMs: n.duration_ms, prompt: n.prompt }));
+}
+
 export async function getVersionTreeRows(rootId: string): Promise<VersionNode[]> {
   const { data, error } = await supabase()
     .from('videos').select('id,parent_id,root_id,remix_kind,depth,prompt,thumbnail_url,created_at,author:profiles!videos_author_id_fkey(username,avatar_url)')

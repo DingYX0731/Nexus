@@ -5,7 +5,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, GitBranch, Heart, MessageCircle, Share2, Home, Info, Globe, Lock, Trash2 } from 'lucide-react-native';
 import { useState } from 'react';
-import { getVideo, getVersionTree, toggleLike, setVisibility as daoSetVisibility, deleteVideo as daoDeleteVideo, type VersionNode } from '@/api/videos';
+import { getVideo, getVersionTree, getContinuationChain, toggleLike, setVisibility as daoSetVisibility, deleteVideo as daoDeleteVideo, type VersionNode } from '@/api/videos';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { CommentsSheet } from '@/components/comments/CommentsSheet';
 import { useComments } from '@/store/comments';
@@ -51,6 +51,14 @@ export default function VideoDetail() {
     queryFn: () => getVersionTree(video!.root_id ?? video!.id),
     enabled: !!video,
   });
+
+  // 续写连贯播放：从根到当前视频的所有片段，依次连播
+  const { data: chain = [] } = useQuery({
+    queryKey: ['chain', video?.id],
+    queryFn: () => getContinuationChain(video!.id),
+    enabled: !!video && video.status === 'ready',
+  });
+  const isChain = chain.length > 1;
 
   const likeMut = useMutation({
     mutationFn: () => toggleLike(id!, user?.id ?? null),
@@ -124,10 +132,18 @@ export default function VideoDetail() {
         <View style={styles.player}>
           <VideoPlayer
             videoUrl={video.video_url}
+            clips={isChain ? chain.map((c) => ({ videoUrl: c.videoUrl, durationMs: c.durationMs })) : undefined}
             isActive
             looping
-            showProgress={false}
+            showProgress={isChain}
+            progressBottomOffset={8}
           />
+          {isChain && (
+            <View style={styles.chainBadge} pointerEvents="none">
+              <GitBranch color="#fff" size={11} />
+              <Text style={styles.chainBadgeText}>{chain.length} 段连贯播放</Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.meta}>
@@ -343,6 +359,13 @@ const styles = StyleSheet.create({
 
   placeholder: { color: colors.text, padding: spacing.lg },
   player: { aspectRatio: 9 / 16, backgroundColor: '#000' },
+  chainBadge: {
+    position: 'absolute', top: 12, left: 12,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 8, paddingVertical: 4,
+    backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 6,
+  },
+  chainBadgeText: { color: '#fff', ...typography.tiny, fontWeight: '600' },
 
   meta: { padding: spacing.lg, gap: spacing.sm },
   kindBadge: {
