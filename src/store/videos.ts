@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { EditMetadata, Video } from '@/api/types';
+import type { Video } from '@/api/types';
 import { DEMO_VIDEOS, demoVideoUri } from '@/ai/demoVideos';
 
 interface LikeMap { [videoId: string]: Set<string> }
@@ -44,7 +44,6 @@ function seedVideos(): Video[] {
       width: sample.width,
       height: sample.height,
       ai_provider: 'mock',
-      edit_metadata: null,
       status: 'ready' as const,
       visibility: 'public' as const,
       created_at: new Date(Date.now() - idx * 3_600_000).toISOString(),
@@ -115,7 +114,7 @@ export function makeNewVideo(args: {
   authorUsername: string;
   prompt: string;
   parent?: Video;
-  remixKind?: 'continuation' | 'prompt_remix' | 'edit';
+  remixKind?: 'continuation' | 'prompt_remix';
   videoUrl: string;
   thumbnailUrl?: string;
   tailFrameUrl?: string;
@@ -123,7 +122,6 @@ export function makeNewVideo(args: {
   width?: number;
   height?: number;
   aiProvider?: string;
-  editMetadata?: EditMetadata | null;
 }): Video {
   const id = `v_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
   const author = { id: args.authorId ?? 'anon', username: args.authorUsername };
@@ -143,7 +141,6 @@ export function makeNewVideo(args: {
     width: args.width ?? null,
     height: args.height ?? null,
     ai_provider: args.aiProvider ?? 'mock',
-    edit_metadata: args.editMetadata ?? null,
     status: 'ready',
     visibility: 'private', // 新生成的默认是草稿,作者在详情页选择"发布"才进 Feed
     created_at: new Date().toISOString(),
