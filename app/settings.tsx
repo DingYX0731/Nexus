@@ -12,6 +12,8 @@ import { useAuth } from '@/store/auth';
 import { useCredits, FREE_INITIAL_CREDITS } from '@/store/credits';
 import { hasSupabase } from '@/api/client';
 import { useLocalVideos } from '@/store/videos';
+import { listMyVideos } from '@/api/videos';
+import { grantCreditsRemote } from '@/api/supabase/creditsRepo';
 import { defaultProvider } from '@/ai/VideoGenProvider';
 import { showToast } from '@/components/toast/Toast';
 import { CreditsDisplay } from '@/components/ui/CreditsDisplay';
@@ -33,6 +35,24 @@ export default function SettingsScreen() {
   const grant = useCredits((s) => s.grant);
   const videos = useLocalVideos((s) => s.videos);
 
+  // 领取演示额度：Supabase 模式走云端 RPC 落库后 resync（否则本地 +5 会被下次 sync 覆盖，
+  // 且 generate-video 读的是云端余额，本地加的额度根本用不了）；保底模式才用本地 grant。
+  const grantDemoCredits = async () => {
+    if (!user) return;
+    if (hasSupabase) {
+      try {
+        await grantCreditsRemote(5);
+        await syncRemote(user.id);
+        showToast({ message: '已添加 5 个额度' });
+      } catch (e: any) {
+        showToast({ message: `添加失败：${e?.message ?? '请稍后重试'}`, durationMs: 4000 });
+      }
+    } else {
+      grant(user.id, 5);
+      showToast({ message: '已添加 5 个额度' });
+    }
+  };
+
   useEffect(() => {
     if (user) {
       if (hasSupabase) {
@@ -43,13 +63,22 @@ export default function SettingsScreen() {
     }
   }, [user, ensureCreditsInit, syncRemote]);
   const credits = user ? (creditsMap[user.id] ?? FREE_INITIAL_CREDITS) : 0;
-  const myVideoCount = user ? videos.filter((v) => v.author_id === user.id).length : 0;
 
   const { data: profile } = useQuery({
     queryKey: ['profile', user?.id],
     queryFn: () => getProfile(user!.id),
     enabled: hasSupabase && !!user && !isAnonymous,
   });
+
+  // 作品数：Supabase 模式从云端读（与个人页同一 queryKey 复用缓存）；保底模式读本地。
+  const { data: myVideos = [] } = useQuery({
+    queryKey: ['myVideos', user?.id],
+    queryFn: () => listMyVideos(user?.id),
+    enabled: hasSupabase && !!user && !isAnonymous,
+  });
+  const myVideoCount = hasSupabase
+    ? myVideos.length
+    : (user ? videos.filter((v) => v.author_id === user.id).length : 0);
 
   const onLogout = () => {
     Alert.alert('退出登录?', '退出后将返回匿名状态。', [
@@ -115,7 +144,7 @@ export default function SettingsScreen() {
               if (!user) return;
               Alert.alert('获取额度', '邀请好友、完成任务即可获取更多额度(敬请期待)', [
                 { text: '知道了' },
-                { text: '+5 额度(演示)', onPress: () => { grant(user.id, 5); showToast({ message: '已添加 5 个额度' }); }},
+                { text: '+5 额度(演示)', onPress: () => { void grantDemoCredits(); }},
               ]);
             }}
             chevron
