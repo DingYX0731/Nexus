@@ -1,4 +1,4 @@
-import type { Video, Author, RemixKind, EditMetadata } from '@/api/types';
+import type { Video, Author, RemixKind } from '@/api/types';
 import type { Comment } from '@/store/comments';
 import type { VideoWithStatsRow, CommentRow, ProfileRow } from './rows';
 
@@ -33,7 +33,6 @@ export function rowToVideo(row: VideoWithStatsRow): Video {
     width: row.width,
     height: row.height,
     ai_provider: row.ai_provider,
-    edit_metadata: (row.edit_metadata as EditMetadata | null) ?? null,
     status: row.status as Video['status'],
     visibility: row.visibility as Video['visibility'],
     created_at: row.created_at,

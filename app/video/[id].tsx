@@ -3,7 +3,7 @@ import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, GitBranch, Scissors, Heart, MessageCircle, Share2, Home, Info, Globe, Lock, Trash2 } from 'lucide-react-native';
+import { ArrowLeft, GitBranch, Heart, MessageCircle, Share2, Home, Info, Globe, Lock, Trash2 } from 'lucide-react-native';
 import { useState } from 'react';
 import { getVideo, getVersionTree, toggleLike, setVisibility as daoSetVisibility, deleteVideo as daoDeleteVideo, type VersionNode } from '@/api/videos';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
@@ -124,7 +124,6 @@ export default function VideoDetail() {
         <View style={styles.player}>
           <VideoPlayer
             videoUrl={video.video_url}
-            editMetadata={video.edit_metadata}
             isActive
             looping
             showProgress={false}
@@ -137,9 +136,7 @@ export default function VideoDetail() {
               kindLabel(video.remix_kind!),
               video.remix_kind === 'continuation'
                 ? '续写：以原视频最后一帧为起点，生成新一段画面，叙事接力。'
-                : video.remix_kind === 'prompt_remix'
-                ? 'Remix：基于原视频主题，用新的 prompt 重新生成，呈现不同风格。'
-                : '剪辑：对原视频做非破坏性编辑（字幕/滤镜），无需重新生成。',
+                : 'Remix：基于原视频主题，用新的 prompt 重新生成，呈现不同风格。',
             )}>
               <GitBranch color={colors.accent} size={11} />
               <Text style={styles.kindText}>{kindLabel(video.remix_kind)}</Text>
@@ -241,17 +238,6 @@ export default function VideoDetail() {
             }}
           />
           <ActionBtn
-            icon={<Scissors color={colors.text} size={22} strokeWidth={1.8} />}
-            label="剪辑"
-            onPress={() => {
-              if (!user) {
-                showAuthRequired('登录后即可剪辑发布 ✂️', () => router.push('/auth/login'));
-                return;
-              }
-              router.push(`/editor/${video.id}`);
-            }}
-          />
-          <ActionBtn
             icon={<Share2 color={colors.text} size={22} strokeWidth={1.8} />}
             label="分享"
             onPress={() => {
@@ -288,7 +274,7 @@ export default function VideoDetail() {
                       </View>
                     </View>
                     <Text style={styles.treeCardPrompt} numberOfLines={1}>
-                      {node.prompt?.slice(0, 40) ?? '(剪辑)'}
+                      {node.prompt?.slice(0, 40) ?? '(无描述)'}
                     </Text>
                   </View>
                 </Pressable>
@@ -329,7 +315,6 @@ function kindLabel(k: VersionNode['remix_kind']) {
   switch (k) {
     case 'continuation': return '续写自他人';
     case 'prompt_remix': return 'Remix 自他人';
-    case 'edit': return '剪辑自他人';
     default: return '原视频';
   }
 }
@@ -338,7 +323,6 @@ function kindLabelShort(k: VersionNode['remix_kind']) {
   switch (k) {
     case 'continuation': return '续写';
     case 'prompt_remix': return 'Remix';
-    case 'edit': return '剪辑';
     default: return '原视频';
   }
 }

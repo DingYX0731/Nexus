@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { View, Text, Pressable, StyleSheet, Image, Share } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Heart, GitBranch, Scissors, MessageCircle, Share2 } from 'lucide-react-native';
+import { Heart, GitBranch, MessageCircle, Share2 } from 'lucide-react-native';
 import Animated, {
   useSharedValue, useAnimatedStyle, withSpring, withSequence,
 } from 'react-native-reanimated';
@@ -66,13 +66,6 @@ export function VideoCard({ video, isActive }: { video: Video; isActive: boolean
     }
     router.push(`/remix/${video.id}`);
   };
-  const onEdit = () => {
-    if (!user) {
-      showAuthRequired('登录后即可剪辑发布 ✂️', () => router.push('/auth/login'));
-      return;
-    }
-    router.push(`/editor/${video.id}`);
-  };
   const onShare = async () => {
     try {
       await Share.share({
@@ -122,7 +115,6 @@ export function VideoCard({ video, isActive }: { video: Video; isActive: boolean
         />
         <SideBtn onPress={() => setCommentsOpen(true)} icon={<MessageCircle size={30} color="#fff" strokeWidth={1.8} />} label={fmt(finalCommentCount)} />
         <SideBtn onPress={onRemix} icon={<GitBranch size={28} color="#fff" strokeWidth={1.8} />} label={fmt(video.stats?.fork_count)} />
-        <SideBtn onPress={onEdit} icon={<Scissors size={26} color="#fff" strokeWidth={1.8} />} label="剪辑" />
         <SideBtn onPress={onShare} icon={<Share2 size={26} color="#fff" strokeWidth={1.8} />} label="分享" />
       </View>
     </View>
@@ -133,7 +125,6 @@ export function VideoCard({ video, isActive }: { video: Video; isActive: boolean
       {isActive ? (
         <VideoPlayer
           videoUrl={video.video_url}
-          editMetadata={video.edit_metadata}
           isActive
           looping
           showProgress
@@ -170,7 +161,8 @@ function SideBtn({ icon, label, onPress }: { icon: React.ReactNode; label: strin
 }
 
 function kindLabel(k: NonNullable<Video['remix_kind']>) {
-  return k === 'continuation' ? '续写' : k === 'prompt_remix' ? 'Remix' : '剪辑';
+  // 旧数据可能存在 remix_kind='edit'（剪辑已下线），兜底显示为 Remix，避免空白
+  return k === 'continuation' ? '续写' : 'Remix';
 }
 
 function fmt(n: number | undefined) {

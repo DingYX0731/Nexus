@@ -1,19 +1,4 @@
-export type RemixKind = 'continuation' | 'prompt_remix' | 'edit';
-export type FilterId = 'none' | 'vintage' | 'mono' | 'warm' | 'cool';
-
-export interface Caption {
-  text: string;
-  startMs: number;
-  endMs: number;
-  style: { x: number; y: number; color: string; size: number };
-}
-
-export interface EditMetadata {
-  trim?: { startMs: number; endMs: number };
-  captions?: Caption[];
-  filter?: FilterId;
-  bgm?: { trackId: string; volume: number };
-}
+export type RemixKind = 'continuation' | 'prompt_remix';
 
 export interface Author {
   id: string;
@@ -44,7 +29,6 @@ export interface Video {
   width?: number | null;
   height?: number | null;
   ai_provider?: string | null;
-  edit_metadata?: EditMetadata | null;
   status: 'generating' | 'ready' | 'failed';
   /** private = 草稿(只在自己个人页可见);public = 已发布(进 Feed) */
   visibility: 'private' | 'public';

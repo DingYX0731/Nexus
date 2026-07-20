@@ -1,4 +1,4 @@
-import type { EditMetadata, VersionNode, Video } from './types';
+import type { VersionNode, Video } from './types';
 import { useLocalVideos, makeNewVideo } from '@/store/videos';
 import { useAuth } from '@/store/auth';
 import { defaultProvider } from '@/ai/VideoGenProvider';
@@ -176,53 +176,6 @@ export async function remixVideo(input: { parentId: string; prompt: string }): P
     remixKind: 'prompt_remix',
     aiProvider: defaultProvider.name,
     ...result,
-  });
-  snapshot().addVideo(video);
-  snapshot().bumpStat(parent.id, 'fork_count');
-  return video;
-}
-
-export async function publishEdit(input: { parentId: string; editMetadata: EditMetadata }): Promise<Video> {
-  if (hasSupabase) {
-    const parent = await getVideo(input.parentId);
-    if (!parent) throw new Error('源视频未找到');
-    const author = authorOfNew();
-    if (!author.id) throw new Error('请先登录再发布编辑');
-    return repo.insertVideoRow({
-      authorId: author.id,
-      prompt: parent.prompt,
-      parentId: parent.id,
-      rootId: parent.root_id,
-      depth: parent.depth + 1,
-      remixKind: 'edit',
-      videoUrl: parent.video_url,
-      thumbnailUrl: parent.thumbnail_url ?? null,
-      tailFrameUrl: parent.tail_frame_url ?? null,
-      durationMs: parent.duration_ms ?? null,
-      width: parent.width ?? null,
-      height: parent.height ?? null,
-      aiProvider: parent.ai_provider ?? null,
-      editMetadata: input.editMetadata,
-      visibility: 'public',
-    });
-  }
-  const parent = await getVideo(input.parentId);
-  if (!parent) throw new Error('源视频未找到');
-  const author = authorOfNew();
-  const video = makeNewVideo({
-    authorId: author.id,
-    authorUsername: author.username,
-    prompt: parent.prompt,
-    parent,
-    remixKind: 'edit',
-    videoUrl: parent.video_url,
-    thumbnailUrl: parent.thumbnail_url ?? undefined,
-    tailFrameUrl: parent.tail_frame_url ?? undefined,
-    durationMs: parent.duration_ms ?? undefined,
-    width: parent.width ?? undefined,
-    height: parent.height ?? undefined,
-    aiProvider: parent.ai_provider ?? undefined,
-    editMetadata: input.editMetadata,
   });
   snapshot().addVideo(video);
   snapshot().bumpStat(parent.id, 'fork_count');

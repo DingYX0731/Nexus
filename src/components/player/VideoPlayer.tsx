@@ -6,12 +6,10 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Play } from 'lucide-react-native';
-import type { EditMetadata } from '@/api/types';
 import { colors } from '@/theme';
 
 interface VideoPlayerProps {
   videoUrl: string;
-  editMetadata?: EditMetadata | null;
   isActive: boolean;
   muted?: boolean;
   looping?: boolean;
@@ -24,7 +22,7 @@ interface VideoPlayerProps {
 }
 
 export function VideoPlayer({
-  videoUrl, editMetadata, isActive, muted = false, looping = true, overlay,
+  videoUrl, isActive, muted = false, looping = true, overlay,
   showProgress = true, progressBottomOffset = 0,
 }: VideoPlayerProps) {
   const player = useVideoPlayer(videoUrl, (p) => {
@@ -66,15 +64,11 @@ export function VideoPlayer({
   // Activation: auto play/pause on slide
   useEffect(() => {
     if (isActive && !userPausedRef.current) {
-      const trim = editMetadata?.trim;
-      if (trim?.startMs != null) {
-        try { player.currentTime = trim.startMs / 1000; } catch {}
-      }
       player.play();
     } else if (!isActive) {
       player.pause();
     }
-  }, [isActive, player, editMetadata]);
+  }, [isActive, player]);
 
   useEffect(() => { player.muted = muted; }, [muted, player]);
 
@@ -105,8 +99,6 @@ export function VideoPlayer({
     opacity: isPlaying ? 0 : 1,
     transform: [{ scale: playIconScale.value }],
   }));
-
-  const filterStyle = FILTER_OVERLAYS[editMetadata?.filter ?? 'none'];
 
   // 进度条拖动:Pan 手势,activate 时记下当前播放状态,end 时 seek + 恢复
   const onScrubStart = (initialProgress: number) => {
@@ -162,20 +154,6 @@ export function VideoPlayer({
           nativeControls={false}
           allowsPictureInPicture={false}
         />
-        {filterStyle && <View pointerEvents="none" style={[StyleSheet.absoluteFill, filterStyle]} />}
-
-        {editMetadata?.captions?.map((c, idx) => (
-          <View
-            key={idx}
-            pointerEvents="none"
-            style={[styles.caption, { bottom: `${(1 - c.style.y) * 100}%` }]}
-          >
-            <Text style={[styles.captionText, { color: c.style.color, fontSize: c.style.size }]}>
-              {c.text}
-            </Text>
-          </View>
-        ))}
-
         <Animated.View pointerEvents="none" style={[styles.playIconWrap, playIconStyle]}>
           <View style={styles.playIconBg}>
             <Play color="#fff" size={42} fill="#fff" />
@@ -240,26 +218,9 @@ function formatTime(sec: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-const FILTER_OVERLAYS: Record<NonNullable<EditMetadata['filter']>, { backgroundColor: string } | null> = {
-  none: null,
-  vintage: { backgroundColor: 'rgba(180, 130, 60, 0.18)' },
-  mono: { backgroundColor: 'rgba(0, 0, 0, 0.0)' },
-  warm: { backgroundColor: 'rgba(255, 140, 50, 0.12)' },
-  cool: { backgroundColor: 'rgba(60, 120, 255, 0.12)' },
-};
-
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#000', overflow: 'hidden' },
   tapLayer: { ...StyleSheet.absoluteFillObject },
-
-  caption: { position: 'absolute', left: 0, right: 0, paddingHorizontal: 16, alignItems: 'center' },
-  captionText: {
-    fontWeight: '700',
-    textShadowColor: 'rgba(0,0,0,0.6)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-    textAlign: 'center',
-  },
 
   playIconWrap: {
     ...StyleSheet.absoluteFillObject,
