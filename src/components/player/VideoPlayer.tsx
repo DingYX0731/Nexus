@@ -76,23 +76,40 @@ export function VideoPlayer({
 
   // 切到第 idx 段：用 replaceAsync 等新片段加载好再 play，避免交界处卡住/需手动点。
   // seekTo 传入则在加载后 seek 到段内时间（跨段拖动用）。
+  //
+  // 关键：换段后不能只靠 replaceAsync().then(play) —— replaceAsync resolve 时新片段
+  // 未必到了可播状态，此时 play() 会被忽略，表现为「交界处暂停、需手点」。
+  // 改为状态驱动：置 pendingPlayRef，等 statusChange 变 readyToPlay 时（见下方监听）再 play。
+  const pendingPlayRef = useRef(false);
+  const pendingSeekRef = useRef<number | undefined>(undefined);
   const switchToClip = (idx: number, autoPlay: boolean, seekTo?: number) => {
     if (idx < 0 || idx >= clipList.length) return;
     clipIndexRef.current = idx;
     setClipIndex(idx);
     switchingRef.current = true;
-    player.replaceAsync(clipList[idx]!.videoUrl)
-      .then(() => {
-        if (seekTo != null) {
-          try { player.currentTime = seekTo; } catch {}
-        }
-        if (autoPlay && isActiveRef.current && !userPausedRef.current) player.play();
-      })
-      .catch(() => {
-        // 加载失败兜底：同步 replace + play
-        try { player.replace(clipList[idx]!.videoUrl); if (autoPlay) player.play(); } catch {}
-      })
-      .finally(() => { switchingRef.current = false; });
+    pendingPlayRef.current = autoPlay;
+    pendingSeekRef.current = seekTo;
+    // 先尝试同步 replace（部分平台 replace 已够快），真正的 play 交给 statusChange。
+    try { player.replace(clipList[idx]!.videoUrl); } catch {
+      try { player.replaceAsync(clipList[idx]!.videoUrl); } catch {}
+    }
+    // 兜底：若新片段已就绪（statusChange 可能不再触发），下一 tick 直接尝试播放。
+    setTimeout(() => {
+      if (switchingRef.current && player.status === 'readyToPlay') tryFlushPending();
+    }, 60);
+  };
+
+  // 尝试执行挂起的 play/seek —— 只在片段就绪后调用。
+  const tryFlushPending = () => {
+    if (pendingSeekRef.current != null) {
+      try { player.currentTime = pendingSeekRef.current; } catch {}
+      pendingSeekRef.current = undefined;
+    }
+    if (pendingPlayRef.current) {
+      if (isActiveRef.current && !userPausedRef.current) player.play();
+      pendingPlayRef.current = false;
+    }
+    switchingRef.current = false;
   };
 
   // Big play icon overlay animation
@@ -109,6 +126,12 @@ export function VideoPlayer({
   // Subscribe to player events
   useEffect(() => {
     const subPlaying = player.addListener('playingChange', ({ isPlaying: p }) => setIsPlaying(p));
+    // 片段就绪即执行挂起的 seek/play：这是修复「交界处暂停需手点」的关键。
+    const subStatus = player.addListener('statusChange', ({ status }) => {
+      if (status === 'readyToPlay' && switchingRef.current) {
+        tryFlushPending();
+      }
+    });
     const subTime = player.addListener('timeUpdate', ({ currentTime }) => {
       const dur = player.duration;
       const i = clipIndexRef.current;
@@ -133,6 +156,7 @@ export function VideoPlayer({
     });
     return () => {
       subPlaying.remove();
+      subStatus.remove();
       subTime.remove();
       subEnd.remove();
     };
