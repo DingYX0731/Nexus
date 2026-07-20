@@ -82,8 +82,17 @@ export function VideoPlayer({
   // 改为状态驱动：置 pendingPlayRef，等 statusChange 变 readyToPlay 时（见下方监听）再 play。
   const pendingPlayRef = useRef(false);
   const pendingSeekRef = useRef<number | undefined>(undefined);
+  const unmountedRef = useRef(false);         // 组件已卸载 → 原生 player 可能已释放，禁止再访问
+  const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 卸载时清理：标记 unmounted + 清掉兜底定时器，避免删视频后回调访问已释放的 player 崩溃。
+  useEffect(() => () => {
+    unmountedRef.current = true;
+    if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
+  }, []);
+
   const switchToClip = (idx: number, autoPlay: boolean, seekTo?: number) => {
-    if (idx < 0 || idx >= clipList.length) return;
+    if (idx < 0 || idx >= clipList.length || unmountedRef.current) return;
     clipIndexRef.current = idx;
     setClipIndex(idx);
     switchingRef.current = true;
@@ -94,21 +103,29 @@ export function VideoPlayer({
       try { player.replaceAsync(clipList[idx]!.videoUrl); } catch {}
     }
     // 兜底：若新片段已就绪（statusChange 可能不再触发），下一 tick 直接尝试播放。
-    setTimeout(() => {
-      if (switchingRef.current && player.status === 'readyToPlay') tryFlushPending();
+    if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
+    fallbackTimerRef.current = setTimeout(() => {
+      fallbackTimerRef.current = null;
+      if (unmountedRef.current || !switchingRef.current) return;
+      try {
+        if (player.status === 'readyToPlay') tryFlushPending();
+      } catch { /* player 已释放，忽略 */ }
     }, 60);
   };
 
-  // 尝试执行挂起的 play/seek —— 只在片段就绪后调用。
+  // 尝试执行挂起的 play/seek —— 只在片段就绪后调用。player 可能已释放，全程容错。
   const tryFlushPending = () => {
-    if (pendingSeekRef.current != null) {
-      try { player.currentTime = pendingSeekRef.current; } catch {}
-      pendingSeekRef.current = undefined;
-    }
-    if (pendingPlayRef.current) {
-      if (isActiveRef.current && !userPausedRef.current) player.play();
-      pendingPlayRef.current = false;
-    }
+    if (unmountedRef.current) return;
+    try {
+      if (pendingSeekRef.current != null) {
+        player.currentTime = pendingSeekRef.current;
+        pendingSeekRef.current = undefined;
+      }
+      if (pendingPlayRef.current) {
+        if (isActiveRef.current && !userPausedRef.current) player.play();
+        pendingPlayRef.current = false;
+      }
+    } catch { /* player 已释放，忽略 */ }
     switchingRef.current = false;
   };
 
