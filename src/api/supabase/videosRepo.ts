@@ -96,34 +96,23 @@ interface ChainNode {
   created_at: string;
 }
 
-// 构造"主线"续写链：从根出发，每一步沿"最早创建的子节点"往下走到叶子，得到一条完整主路径。
-// 无论传入的是根、中间还是叶子节点，只要它在这棵树的主线上，都返回同一条链（供步道条高亮不同节点）。
+// 构造续写连播链 = 从「当前节点」沿 parent_id 回溯到根，反转成 root→当前节点。
+// 只包含到当前这一集为止的祖先路径，绝不钻进任何子分支——
+// 这样点第 2 集就播到第 2 集，不会自动跑到它的第 3 集，也不会串到别的分支。
+// 步道条(整棵树/分支)由 getSeriesTree 单独提供，与这里的连播链无关。
 // 导出供本地保底路径复用。
 export function buildChain(videoId: string, nodes: ChainNode[]): ChainClip[] {
   const byId = new Map(nodes.map((n) => [n.id, n]));
-  // 找根：沿 parent_id 一路向上
-  let root = byId.get(videoId);
-  const upSeen = new Set<string>();
-  while (root && root.parent_id && byId.has(root.parent_id) && !upSeen.has(root.id)) {
-    upSeen.add(root.id);
-    root = byId.get(root.parent_id!);
+  const path: ChainNode[] = [];
+  const seen = new Set<string>(); // 防父子成环死循环
+  let node = byId.get(videoId);
+  while (node && !seen.has(node.id)) {
+    seen.add(node.id);
+    path.push(node);
+    node = node.parent_id ? byId.get(node.parent_id) : undefined;
   }
-  if (!root) return [];
-  // 预排序：同一父的多个子，按 created_at 升序，取最早的作为主线延续
-  const childrenOf = (pid: string) =>
-    nodes
-      .filter((n) => n.parent_id === pid)
-      .sort((a, b) => a.created_at.localeCompare(b.created_at));
-  // 从根沿最早子往下，构成主线
-  const mainline: ChainNode[] = [];
-  const downSeen = new Set<string>();
-  let node: ChainNode | undefined = root;
-  while (node && !downSeen.has(node.id)) {
-    downSeen.add(node.id);
-    mainline.push(node);
-    node = childrenOf(node.id)[0];
-  }
-  return mainline
+  path.reverse(); // root → 当前节点
+  return path
     .filter((n) => n.status === 'ready' && n.video_url)
     .map((n) => ({ id: n.id, videoUrl: n.video_url, durationMs: n.duration_ms, prompt: n.prompt }));
 }
