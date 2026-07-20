@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { hasSupabase } from '@/api/client';
-import { listCommentsRemote, addCommentRemote } from '@/api/supabase/commentsRepo';
+import { listCommentsRemote, addCommentRemote, deleteCommentRemote } from '@/api/supabase/commentsRepo';
 
 export interface Comment {
   id: string;
@@ -23,6 +23,7 @@ interface CommentsStore {
   ensureSeeded: (videoId: string) => void;
   add: (videoId: string, text: string, parentId: string | null, author: { id: string; name: string }, replyToName?: string | null) => Comment;
   toggleLike: (videoId: string, commentId: string) => void;
+  remove: (videoId: string, commentId: string) => void;
 }
 
 const AVATAR_COLORS = ['#fe2c55', '#25f4ee', '#ff6b9d', '#7ad7ff', '#ffd166', '#a06cd5', '#8ad27a', '#ff9f7a'];
@@ -171,6 +172,36 @@ export const useComments = create<CommentsStore>((set, get) => ({
           ),
         },
       };
+    });
+  },
+  remove: (videoId, commentId) => {
+    // 删根评论 → 连带删楼内回复（对齐后端 on delete cascade）；
+    // 删回复 → 父评论 replyCount 减一。
+    const cur = get().byVideo[videoId] ?? [];
+    const target = cur.find((c) => c.id === commentId);
+    if (!target) return;
+
+    if (hasSupabase) {
+      // 后端只需删这一条，回复由 DB cascade 处理
+      deleteCommentRemote(commentId).catch(() => {
+        // 失败则回滚本地删除
+        set((s) => ({ byVideo: { ...s.byVideo, [videoId]: cur } }));
+      });
+    }
+
+    set((s) => {
+      const list = s.byVideo[videoId] ?? [];
+      let next: Comment[];
+      if (target.parentId) {
+        // 删的是回复：移除自身 + 父评论 replyCount 减一
+        next = list
+          .filter((c) => c.id !== commentId)
+          .map((c) => (c.id === target.parentId ? { ...c, replyCount: Math.max(0, c.replyCount - 1) } : c));
+      } else {
+        // 删的是根评论：移除自身 + 所有挂在它下面的回复
+        next = list.filter((c) => c.id !== commentId && c.parentId !== commentId);
+      }
+      return { byVideo: { ...s.byVideo, [videoId]: next } };
     });
   },
 }));

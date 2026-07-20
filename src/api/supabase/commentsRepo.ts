@@ -20,3 +20,10 @@ export async function addCommentRemote(videoId: string, body: string, authorId: 
   if (error) throw error;
   return rowToComment(data as CommentRow);
 }
+
+// 删除评论：RLS 策略 comments_delete_own 只允许作者删自己的。
+// parent_id 设了 on delete cascade，删根评论会连带删掉楼内回复。
+export async function deleteCommentRemote(commentId: string): Promise<void> {
+  const { error } = await supabase().from('comments').delete().eq('id', commentId);
+  if (error) throw error;
+}

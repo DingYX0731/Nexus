@@ -16,7 +16,7 @@ import {
 import { colors, radius, spacing, typography } from '@/theme';
 import { useComments, type Comment } from '@/store/comments';
 import { useAuth } from '@/store/auth';
-import { showAuthRequired } from '@/components/dialog/ConfirmDialog';
+import { showAuthRequired, showDialog } from '@/components/dialog/ConfirmDialog';
 import { useRouter } from 'expo-router';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 
@@ -51,6 +51,7 @@ export function CommentsSheet({ videoId, visible, onClose }: Props) {
   const ensureSeeded = useComments((s) => s.ensureSeeded);
   const addComment = useComments((s) => s.add);
   const toggleLike = useComments((s) => s.toggleLike);
+  const removeComment = useComments((s) => s.remove);
   const comments = useComments((s) => s.byVideo[videoId]) ?? [];
   const { user } = useAuth();
 
@@ -251,6 +252,19 @@ export function CommentsSheet({ videoId, visible, onClose }: Props) {
     toggleLike(videoId, commentId);
   };
 
+  const handleDelete = (comment: Comment) => {
+    const isRoot = !comment.parentId;
+    showDialog({
+      title: '删除评论',
+      message: isRoot && comment.replyCount > 0
+        ? '删除这条评论会一并删除它下面的回复,此操作无法撤销。'
+        : '确定删除这条评论吗?此操作无法撤销。',
+      primaryLabel: '删除',
+      secondaryLabel: '取消',
+      onPrimary: () => removeComment(videoId, comment.id),
+    });
+  };
+
   const canSend = draft.trim().length > 0;
 
   const renderItem = ({ item }: ListRenderItemInfo<Comment>) => (
@@ -258,6 +272,8 @@ export function CommentsSheet({ videoId, visible, onClose }: Props) {
       comment={item}
       onLike={() => onLikeComment(item.id)}
       onReply={() => handleReply(item)}
+      canDelete={!!user && item.authorId === user.id}
+      onDelete={() => handleDelete(item)}
     />
   );
 
@@ -455,7 +471,10 @@ function EmojiGrid({ onPick, onBackspace }: { onPick: (e: string) => void; onBac
   );
 }
 
-function CommentRow({ comment, onLike, onReply }: { comment: Comment; onLike: () => void; onReply: () => void }) {
+function CommentRow({ comment, onLike, onReply, canDelete, onDelete }: {
+  comment: Comment; onLike: () => void; onReply: () => void;
+  canDelete: boolean; onDelete: () => void;
+}) {
   const isReply = !!comment.parentId;
   return (
     <View style={[styles.row, isReply && styles.rowReply]}>
@@ -474,6 +493,11 @@ function CommentRow({ comment, onLike, onReply }: { comment: Comment; onLike: ()
           <Pressable hitSlop={8} onPress={onReply}>
             <Text style={styles.metaAction}>回复</Text>
           </Pressable>
+          {canDelete && (
+            <Pressable hitSlop={8} onPress={onDelete}>
+              <Text style={styles.metaDelete}>删除</Text>
+            </Pressable>
+          )}
           {!isReply && comment.replyCount > 0 && (
             <Text style={styles.metaTime}>{comment.replyCount} 条回复</Text>
           )}
@@ -533,6 +557,7 @@ const styles = StyleSheet.create({
   metaRow: { flexDirection: 'row', gap: spacing.md, alignItems: 'center', marginTop: 4 },
   metaTime: { ...typography.tiny, color: colors.textDim },
   metaAction: { ...typography.tiny, color: colors.textMuted, fontWeight: '600' },
+  metaDelete: { ...typography.tiny, color: colors.danger, fontWeight: '600' },
   likeCol: { alignItems: 'center', minWidth: 28, gap: 2, paddingTop: 4 },
   likeNum: { ...typography.tiny, color: colors.textMuted },
 
