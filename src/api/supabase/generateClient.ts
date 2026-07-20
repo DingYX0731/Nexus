@@ -30,6 +30,29 @@ function sleep(ms: number) {
 }
 
 /**
+ * 从 supabase-js 的 FunctionsHttpError 里挖出 Edge Function 返回的真实错误消息。
+ * supabase-js 只给通用 message，真正的 { error: "..." } 藏在 err.context（原始 Response）里。
+ */
+async function extractEdgeError(err: unknown): Promise<string> {
+  const ctx = (err as { context?: unknown })?.context;
+  // context 是原始 Response，能读到 body
+  if (ctx && typeof (ctx as Response).json === 'function') {
+    try {
+      const body = await (ctx as Response).clone().json();
+      if (body?.error) return String(body.error);
+    } catch {
+      try {
+        const txt = await (ctx as Response).clone().text();
+        if (txt) return txt.slice(0, 300);
+      } catch {
+        // 落到下面的通用 message
+      }
+    }
+  }
+  return (err as Error)?.message ?? '发起生成失败';
+}
+
+/**
  * 对已有 videoId 进行续轮询，直到 ready/failed 或超时。
  * 供 callGenerate 内部使用，也供个人页进入时恢复未完成的轮询。
  */
@@ -56,16 +79,17 @@ export async function callGenerate(args: GenerateArgs): Promise<Video> {
   const { data: startData, error: startErr } =
     await supabase().functions.invoke('generate-video', { body: args });
   if (startErr) {
-    // supabase-js 把 Edge Function 的非 2xx 响应 status 放在 startErr.status 或 message 里
-    const msg = startErr.message ?? '';
+    // supabase-js 对非 2xx 只给通用 message（"Edge Function returned a non-2xx status code"），
+    // 真正的错误在 startErr.context（原始 Response）的 body 里。把它挖出来，不然用户只看到无意义的通用文案。
+    const realError = await extractEdgeError(startErr);
     if (
       (startErr as any).status === 402 ||
-      msg.includes('402') ||
-      msg.includes('额度不足')
+      realError.includes('402') ||
+      realError.includes('额度不足')
     ) {
       throw new CreditsExhaustedError();
     }
-    throw new Error(msg);
+    throw new Error(realError);
   }
   const start = startData as StartResp;
   if (start.error) {

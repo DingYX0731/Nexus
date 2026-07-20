@@ -30,14 +30,39 @@ function authHeaders(): HeadersInit {
 }
 
 // 带超时的 fetch：避免某个请求永久挂起拖到 Edge Function 墙钟上限。
+// 超时抛出更明确的错误（原生 AbortError 的 message 是无意义的 "The signal has been aborted"）。
 async function fetchWithTimeout(input: string | URL, init: RequestInit, ms: number): Promise<Response> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), ms);
   try {
     return await fetch(input, { ...init, signal: ctrl.signal });
+  } catch (e) {
+    if ((e as Error)?.name === 'AbortError') {
+      throw new Error(`豆包请求超时（>${Math.round(ms / 1000)}s），服务端繁忙，请稍后重试`);
+    }
+    throw e;
   } finally {
     clearTimeout(t);
   }
+}
+
+// 带重试的 fetch：paratera/豆包端点偶发慢/抖动，超时或网络错时退避重试，吸收间歇性失败。
+async function fetchWithRetry(
+  input: string | URL, init: RequestInit, timeoutMs: number, retries: number,
+): Promise<Response> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fetchWithTimeout(input, init, timeoutMs);
+    } catch (e) {
+      lastErr = e;
+      // 最后一次不再等待，直接抛
+      if (attempt < retries) {
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1))); // 1s, 2s 退避
+      }
+    }
+  }
+  throw lastErr;
 }
 
 function buildText(prompt: string, ratio: string, durationSec: number): string {
@@ -55,11 +80,12 @@ export async function createTask(
   const content: unknown[] = [{ type: 'text', text }];
   if (imageUrl) content.push({ type: 'image_url', image_url: { url: imageUrl } });
 
-  const res = await fetchWithTimeout(`${BASE}${TASKS}`, {
+  // 45s 超时 + 最多 2 次重试：发起任务是短请求，但 paratera 端点偶发慢，留足余量。
+  const res = await fetchWithRetry(`${BASE}${TASKS}`, {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({ model: MODEL, content }),
-  }, 20_000);
+  }, 45_000, 2);
   if (!res.ok) {
     const errTxt = await res.text();
     throw new Error(`豆包创建任务失败 (${res.status}): ${errTxt.slice(0, 200)}`);
@@ -74,7 +100,8 @@ export async function queryTask(taskId: string): Promise<TaskStatus> {
   if (!KEY) throw new Error('DOUBAO_API_KEY 未配置');
   const url = new URL(`${BASE}${TASKS}`);
   url.searchParams.set('filter.task_ids', taskId);
-  const res = await fetchWithTimeout(url, { headers: authHeaders() }, 20_000);
+  // 查询是幂等的，超时/抖动时重试 1 次；单次查询失败不该拖垮整个轮询。
+  const res = await fetchWithRetry(url, { headers: authHeaders() }, 30_000, 1);
   if (!res.ok) {
     const errTxt = await res.text();
     throw new Error(`豆包查询失败 (${res.status}): ${errTxt.slice(0, 200)}`);
