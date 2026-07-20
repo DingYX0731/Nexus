@@ -6,6 +6,8 @@
 // - 任务完成后:videos store 自动接收新视频,并触发本地 "刚完成" 标记
 // - 应用切到后台不影响轮询(MVP 阶段);M3 会迁到 Edge Function + Realtime
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import type { Video } from '@/api/types';
 import { defaultProvider } from '@/ai/VideoGenProvider';
@@ -48,20 +50,40 @@ interface JobsStore {
   visibleFor: (userId: string) => AiJobRecord[];
 }
 
-const useJobsStoreInternal = create<JobsStore>((set, get) => ({
-  jobs: [],
-  add: (r) => set((s) => ({ jobs: [r, ...s.jobs] })),
-  patch: (id, patch) => set((s) => ({
-    jobs: s.jobs.map((j) => (j.id === id ? { ...j, ...patch } : j)),
-  })),
-  cancel: (id) => set((s) => ({
-    jobs: s.jobs.map((j) => (j.id === id && (j.status === 'queued' || j.status === 'running')
-      ? { ...j, status: 'cancelled' as const, statusMsg: '已取消' }
-      : j)),
-  })),
-  visibleFor: (userId) =>
-    get().jobs.filter((j) => j.ownerUserId === userId).slice(0, 20),
-}));
+const useJobsStoreInternal = create<JobsStore>()(
+  persist(
+    (set, get) => ({
+      jobs: [],
+      add: (r) => set((s) => ({ jobs: [r, ...s.jobs] })),
+      patch: (id, patch) => set((s) => ({
+        jobs: s.jobs.map((j) => (j.id === id ? { ...j, ...patch } : j)),
+      })),
+      cancel: (id) => set((s) => ({
+        jobs: s.jobs.map((j) => (j.id === id && (j.status === 'queued' || j.status === 'running')
+          ? { ...j, status: 'cancelled' as const, statusMsg: '已取消' }
+          : j)),
+      })),
+      visibleFor: (userId) =>
+        get().jobs.filter((j) => j.ownerUserId === userId).slice(0, 20),
+    }),
+    {
+      name: 'ai-jobs',
+      storage: createJSONStorage(() => AsyncStorage),
+      // 只持久化 jobs 列表本身
+      partialize: (s) => ({ jobs: s.jobs }),
+      // 重启后：内存里的轮询协程已断，仍停留在 queued/running 的旧任务不会再有人推进。
+      // 标记为 failed(可重试文案)，避免它们永远转圈；已完成/失败/取消的原样保留。
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+        state.jobs = state.jobs.map((j) =>
+          j.status === 'queued' || j.status === 'running'
+            ? { ...j, status: 'failed' as const, statusMsg: '生成中断（App 已重开），请重试' }
+            : j,
+        );
+      },
+    },
+  ),
+);
 
 export const useJobs = useJobsStoreInternal;
 
@@ -334,7 +356,8 @@ async function resolveContinuationFrame(rec: AiJobRecord, parentVideo: Video): P
       useJobsStoreInternal.getState().patch(rec.id, { statusMsg: '正在提取上一段末帧...' });
       const localUri = await extractLastFrame(parentVideo.video_url, parentVideo.duration_ms);
       if (localUri) {
-        const publicUrl = await uploadTailFrame(localUri, parentVideo.id);
+        // rec.id 每次提交唯一，保证同一父视频多次续写各自的尾帧 URL 不同，避免串帧
+        const publicUrl = await uploadTailFrame(localUri, parentVideo.id, rec.id);
         return publicUrl;
       }
     } catch {
