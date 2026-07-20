@@ -50,6 +50,13 @@ export function VideoPlayer({
     p.timeUpdateEventInterval = 0.25;
   });
 
+  // 关键：loop 只在创建时设一次是不够的——播放器创建时 clips 常还没加载(isChain=false→loop=true)，
+  // 等 chain 加载完 isChain 变 true 时 loop 仍是 true，导致每段循环重播、不触发 playToEnd 换段
+  // （表现为"有时连播有时不连"）。这里随 isChain/looping 实时同步 loop。
+  useEffect(() => {
+    try { player.loop = looping && !isChain; } catch { /* player 可能已释放 */ }
+  }, [player, looping, isChain]);
+
   // 当前播放到第几段
   const clipIndexRef = useRef(0);
   const [clipIndex, setClipIndex] = useState(0);
@@ -153,6 +160,22 @@ export function VideoPlayer({
   const elapsedBefore = (idx: number) =>
     clipDurationsRef.current.slice(0, idx).reduce((a, b) => a + b, 0);
 
+  // 前进到下一段（链模式）。playToEnd 事件和 timeUpdate 兜底都会调它，advancingRef 去重。
+  const advancingRef = useRef(false);
+  const advanceClip = () => {
+    if (!isChain || advancingRef.current || switchingRef.current) return;
+    const next = clipIndexRef.current + 1;
+    if (next < clipList.length) {
+      advancingRef.current = true;
+      switchToClip(next, true);
+      setTimeout(() => { advancingRef.current = false; }, 300);
+    } else if (looping) {
+      advancingRef.current = true;
+      switchToClip(0, true);
+      setTimeout(() => { advancingRef.current = false; }, 300);
+    }
+  };
+
   // Subscribe to player events
   useEffect(() => {
     const subPlaying = player.addListener('playingChange', ({ isPlaying: p }) => setIsPlaying(p));
@@ -167,16 +190,15 @@ export function VideoPlayer({
         const globalTime = elapsedBefore(i) + Math.min(currentTime, clipDurationsRef.current[i] ?? currentTime);
         setProgress(Math.min(1, Math.max(0, globalTime / total)));
       }
+      // 兜底：playToEnd 事件在某些机型/loop 切换后不稳定，这里用 timeUpdate 检测「接近段尾」主动换段。
+      if (isChain && !switchingRef.current && dur && dur > 0 && currentTime >= dur - 0.35) {
+        advanceClip();
+      }
     });
-    // 链模式：一段播完自动接下一段；最后一段结束按 looping 决定回到第 0 段
+    // 链模式：一段播完自动接下一段（playToEnd 更精确，优先它）
     const subEnd = player.addListener('playToEnd', () => {
       if (!isChain) return;
-      const next = clipIndexRef.current + 1;
-      if (next < clipList.length) {
-        switchToClip(next, true);
-      } else if (looping) {
-        switchToClip(0, true);
-      }
+      advanceClip();
     });
     return () => {
       subPlaying.remove();
