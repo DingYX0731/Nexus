@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, GitBranch, Heart, MessageCircle, Share2, Home, Info, Globe, Lock, Trash2 } from 'lucide-react-native';
 import { useState } from 'react';
-import { getVideo, getContinuationChain, toggleLike, setVisibility as daoSetVisibility, deleteVideo as daoDeleteVideo, type RemixKind } from '@/api/videos';
+import { getVideo, getContinuationChain, getSeriesTree, toggleLike, setVisibility as daoSetVisibility, deleteVideo as daoDeleteVideo, type RemixKind, type SeriesNode } from '@/api/videos';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { CommentsSheet } from '@/components/comments/CommentsSheet';
 import { useComments } from '@/store/comments';
@@ -51,6 +51,14 @@ export default function VideoDetail() {
     enabled: !!video && video.status === 'ready',
   });
   const isChain = chain.length > 1;
+
+  // 续写系列树（含分支）：供步道条按父子/分层渲染
+  const { data: series = [] } = useQuery({
+    queryKey: ['series', video?.root_id ?? id],
+    queryFn: () => getSeriesTree(video!.id),
+    enabled: !!video && video.status === 'ready',
+  });
+  const hasSeries = series.length > 1;
 
   const likeMut = useMutation({
     mutationFn: () => toggleLike(id!, user?.id ?? null),
@@ -254,39 +262,49 @@ export default function VideoDetail() {
           />
         </View>
 
-        {isChain && (
+        {hasSeries && (
           <View style={styles.stepper}>
             <View style={styles.stepperHeader}>
               <GitBranch color={colors.accent} size={14} />
-              <Text style={styles.stepperTitle}>完整故事 · {chain.length} 集</Text>
-              <Text style={styles.stepperHint}>点任意集可跳转</Text>
+              <Text style={styles.stepperTitle}>完整故事 · {series.length} 集</Text>
+              <Text style={styles.stepperHint}>← 可滑动 · 点任意集跳转</Text>
             </View>
+            {/* 横向可滑动树：每一列 = 一层(depth)，同层多个 = 分支，纵向并列 */}
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.stepperTrack}
+              contentContainerStyle={styles.treeTrack}
             >
-              {chain.map((clip, idx) => {
-                const isCurrent = clip.id === id;
-                return (
-                  <View key={clip.id} style={styles.stepItemWrap}>
-                    {idx > 0 && <View style={styles.stepConnector} />}
-                    <Pressable
-                      style={[styles.stepItem, isCurrent && styles.stepItemActive]}
-                      onPress={() => { if (!isCurrent) router.replace(`/video/${clip.id}` as any); }}
-                    >
-                      <View style={[styles.stepNum, isCurrent && styles.stepNumActive]}>
-                        <Text style={[styles.stepNumText, isCurrent && styles.stepNumTextActive]}>{idx + 1}</Text>
-                      </View>
-                      <Text style={[styles.stepCaption, isCurrent && styles.stepCaptionActive]} numberOfLines={2}>
-                        {clip.prompt?.slice(0, 24) ?? `第 ${idx + 1} 段`}
-                      </Text>
-                    </Pressable>
+              {groupByDepth(series).map((column, colIdx) => (
+                <View key={colIdx} style={styles.treeColumn}>
+                  {colIdx > 0 && <View style={styles.treeColConnector} />}
+                  <View style={styles.treeColItems}>
+                    {column.map((node) => {
+                      const isCurrent = node.id === id;
+                      const label = colIdx === 0 ? '起点' : `第 ${colIdx + 1} 集`;
+                      return (
+                        <Pressable
+                          key={node.id}
+                          style={[styles.treeNode, isCurrent && styles.treeNodeActive]}
+                          onPress={() => { if (!isCurrent) router.replace(`/video/${node.id}` as any); }}
+                        >
+                          <View style={styles.treeNodeHead}>
+                            <View style={[styles.stepNum, isCurrent && styles.stepNumActive]}>
+                              <Text style={[styles.stepNumText, isCurrent && styles.stepNumTextActive]}>{colIdx + 1}</Text>
+                            </View>
+                            <Text style={[styles.treeNodeLabel, isCurrent && styles.stepCaptionActive]}>{label}</Text>
+                          </View>
+                          <Text style={[styles.stepCaption, isCurrent && styles.stepCaptionActive]} numberOfLines={2}>
+                            {node.prompt?.slice(0, 28) ?? '(无描述)'}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
                   </View>
-                );
-              })}
+                </View>
+              ))}
             </ScrollView>
-            {/* 从当前这一集继续续写 */}
+            {/* 从当前这一集继续续写（同一集可续写多个分支） */}
             <Pressable
               style={styles.stepperRemixBtn}
               onPress={() => router.push(`/remix/${id}` as any)}
@@ -314,6 +332,19 @@ function ActionBtn({ icon, label, onPress }: { icon: React.ReactNode; label: str
       <Text style={styles.actionLbl}>{label}</Text>
     </Pressable>
   );
+}
+
+// 按 depth 分组成列：每列是同一层的节点（同一父的多个续写=分支，会落在同列）。
+function groupByDepth(nodes: SeriesNode[]): SeriesNode[][] {
+  const byDepth = new Map<number, SeriesNode[]>();
+  for (const n of nodes) {
+    const arr = byDepth.get(n.depth) ?? [];
+    arr.push(n);
+    byDepth.set(n.depth, arr);
+  }
+  return [...byDepth.keys()]
+    .sort((a, b) => a - b)
+    .map((d) => byDepth.get(d)!.sort((a, b) => a.createdAt.localeCompare(b.createdAt)));
 }
 
 function kindLabel(k: RemixKind | null) {
@@ -391,16 +422,23 @@ const styles = StyleSheet.create({
   actionBtn: { alignItems: 'center', gap: 6, minWidth: 56 },
   actionLbl: { ...typography.tiny, color: colors.text },
 
-  // 分集步道条：水平展示 root→leaf 的每一集，高亮当前，可跳转
+  // 分集步道条（横向可滑动树）：每列一层(depth)，同层多个=分支纵向并列，高亮当前，可跳转
   stepper: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, gap: spacing.sm },
   stepperHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   stepperTitle: { ...typography.captionStrong, color: colors.text },
   stepperHint: { ...typography.tiny, color: colors.textDim, marginLeft: 'auto' },
-  stepperTrack: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: spacing.xs },
-  stepItemWrap: { flexDirection: 'row', alignItems: 'center' },
-  stepConnector: { width: 16, height: 2, backgroundColor: colors.border, marginTop: 14 },
-  stepItem: { width: 76, alignItems: 'center', gap: 6, paddingVertical: spacing.xs },
-  stepItemActive: {},
+  treeTrack: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: spacing.xs },
+  treeColumn: { flexDirection: 'row', alignItems: 'center' },
+  treeColConnector: { width: 14, height: 2, backgroundColor: colors.border, alignSelf: 'center' },
+  treeColItems: { gap: spacing.sm },
+  treeNode: {
+    width: 132, padding: spacing.sm, gap: 4,
+    backgroundColor: colors.surface, borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border,
+  },
+  treeNodeActive: { borderColor: colors.primary, borderWidth: 1.5, backgroundColor: colors.primarySoft },
+  treeNodeHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  treeNodeLabel: { ...typography.tiny, color: colors.textSecondary, fontWeight: '600' },
   stepNum: {
     width: 30, height: 30, borderRadius: 15,
     backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border,
@@ -409,7 +447,7 @@ const styles = StyleSheet.create({
   stepNumActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   stepNumText: { ...typography.captionStrong, color: colors.textMuted },
   stepNumTextActive: { color: '#fff' },
-  stepCaption: { ...typography.tiny, color: colors.textMuted, textAlign: 'center', lineHeight: 14 },
+  stepCaption: { ...typography.tiny, color: colors.textMuted, lineHeight: 14 },
   stepCaptionActive: { color: colors.text, fontWeight: '600' },
   stepperRemixBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,

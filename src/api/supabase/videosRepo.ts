@@ -128,6 +128,43 @@ export function buildChain(videoId: string, nodes: ChainNode[]): ChainClip[] {
     .map((n) => ({ id: n.id, videoUrl: n.video_url, durationMs: n.duration_ms, prompt: n.prompt }));
 }
 
+// 续写系列树：返回整棵树的 ready 节点（含所有分支），供步道条按父子关系渲染。
+// 与 getContinuationChain（只出主线连播）不同，这里保留分支。
+export interface SeriesNode {
+  id: string;
+  parentId: string | null;
+  depth: number;
+  prompt: string | null;
+  createdAt: string;
+}
+
+export async function getSeriesTreeRows(videoId: string): Promise<SeriesNode[]> {
+  const { data: cur, error: curErr } = await supabase()
+    .from('videos').select('root_id').eq('id', videoId).maybeSingle();
+  if (curErr) throw curErr;
+  if (!cur) return [];
+  const { data, error } = await supabase()
+    .from('videos')
+    .select('id,parent_id,depth,prompt,status,video_url,created_at')
+    .eq('root_id', (cur as { root_id: string }).root_id);
+  if (error) throw error;
+  return normalizeSeriesNodes((data ?? []) as any[]);
+}
+
+// 过滤出 ready 且有 video_url 的节点，按 depth→created_at 排序，导出供本地保底复用。
+export function normalizeSeriesNodes(rows: any[]): SeriesNode[] {
+  return rows
+    .filter((r) => r.status === 'ready' && r.video_url)
+    .map((r) => ({
+      id: r.id,
+      parentId: r.parent_id ?? null,
+      depth: r.depth ?? 0,
+      prompt: r.prompt ?? null,
+      createdAt: r.created_at,
+    }))
+    .sort((a, b) => a.depth - b.depth || a.createdAt.localeCompare(b.createdAt));
+}
+
 export async function getVersionTreeRows(rootId: string): Promise<VersionNode[]> {
   const { data, error } = await supabase()
     .from('videos').select('id,parent_id,root_id,remix_kind,depth,prompt,thumbnail_url,created_at,author:profiles!videos_author_id_fkey(username,avatar_url)')

@@ -8,7 +8,7 @@ import * as commentsRepo from '@/api/supabase/commentsRepo';
 import { callGenerate } from '@/api/supabase/generateClient';
 
 export type { Video, VersionNode, RemixKind } from './types';
-export type { ChainClip } from '@/api/supabase/videosRepo';
+export type { ChainClip, SeriesNode } from '@/api/supabase/videosRepo';
 
 function snapshot() {
   return useLocalVideos.getState();
@@ -77,6 +77,21 @@ export async function listUserVideos(userId: string): Promise<Video[]> {
   return snapshot().videos.filter(
     (v) => v.author_id === userId && v.visibility === 'public' && v.status === 'ready',
   );
+}
+
+// 续写系列树：整棵树的 ready 节点（含分支），供步道条渲染。
+export async function getSeriesTree(videoId: string): Promise<repo.SeriesNode[]> {
+  if (hasSupabase) return repo.getSeriesTreeRows(videoId);
+  snapshot().hydrate();
+  const cur = snapshot().videos.find((v) => v.id === videoId);
+  if (!cur) return [];
+  const rows = snapshot().videos
+    .filter((v) => v.root_id === cur.root_id)
+    .map((v) => ({
+      id: v.id, parent_id: v.parent_id, depth: v.depth,
+      prompt: v.prompt, status: v.status, video_url: v.video_url, created_at: v.created_at,
+    }));
+  return repo.normalizeSeriesNodes(rows);
 }
 
 // 续写祖先链：root→leaf 的可播放片段，供详情页连贯播放。
