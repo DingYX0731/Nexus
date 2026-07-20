@@ -58,13 +58,26 @@ async function extractEdgeError(err: unknown): Promise<string> {
  */
 export async function resumePoll(videoId: string): Promise<'ready' | 'failed'> {
   const deadline = Date.now() + POLL_TIMEOUT_MS;
+  // 单次 poll 调用失败（网络抖动 / Edge 冷启动 / 转存慢引发的 5xx）不该立即判死整个任务——
+  // 豆包那边多半还在正常生成。容忍连续几次失败，超过阈值才真正抛错。
+  let consecutiveErrors = 0;
+  const MAX_CONSECUTIVE_ERRORS = 5;
+  let lastError = '';
   while (Date.now() < deadline) {
     await sleep(POLL_INTERVAL_MS);
     const { data, error } = await supabase().functions.invoke('poll-video', { body: { videoId } });
-    if (error) throw new Error(error.message);
+    if (error) {
+      lastError = await extractEdgeError(error);
+      consecutiveErrors += 1;
+      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+        throw new Error(lastError || '轮询失败');
+      }
+      continue; // 继续下一轮，给服务端恢复的机会
+    }
+    consecutiveErrors = 0;
     const poll = data as { status?: 'generating' | 'ready' | 'failed'; error?: string };
     if (poll.status === 'ready') return 'ready';
-    if (poll.status === 'failed') return 'failed';
+    if (poll.status === 'failed') throw new Error(poll.error ?? 'AI 生成失败');
     // generating → 继续轮询
   }
   throw new Error('生成超时，请稍后在个人页查看');

@@ -17,20 +17,31 @@ function json(obj: unknown, status: number): Response {
   });
 }
 
+// 下载豆包视频（40s 超时 + 最多 2 次退避重试）。豆包签名 URL 有效但下载偶发抖动，
+// 一次失败就判死整个任务太浪费（豆包任务已成功、已烧 token）。upsert 幂等，重试安全。
+async function downloadWithRetry(srcUrl: string, retries: number): Promise<Uint8Array> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 40_000);
+    try {
+      const res = await fetch(srcUrl, { signal: ctrl.signal });
+      if (!res.ok) throw new Error(`下载视频失败 ${res.status}`);
+      return new Uint8Array(await res.arrayBuffer());
+    } catch (e) {
+      lastErr = (e as Error)?.name === 'AbortError' ? new Error('下载视频超时（>40s）') : e;
+      if (attempt < retries) await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+    } finally {
+      clearTimeout(t);
+    }
+  }
+  throw lastErr;
+}
+
 async function store(
   admin: any, bucket: string, path: string, srcUrl: string, contentType: string,
 ): Promise<string> {
-  // 下载豆包视频加 60s 超时，避免卡住拖到墙钟上限
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 60_000);
-  let buf: Uint8Array;
-  try {
-    const res = await fetch(srcUrl, { signal: ctrl.signal });
-    if (!res.ok) throw new Error(`下载视频失败 ${res.status}`);
-    buf = new Uint8Array(await res.arrayBuffer());
-  } finally {
-    clearTimeout(t);
-  }
+  const buf = await downloadWithRetry(srcUrl, 2);
   const { error } = await admin.storage.from(bucket).upload(path, buf, { contentType, upsert: true });
   if (error) throw error;
   const { data } = admin.storage.from(bucket).getPublicUrl(path);
@@ -56,10 +67,10 @@ Deno.serve(async (req) => {
     const { videoId } = await req.json();
     if (!videoId) return json({ error: '缺少 videoId' }, 400);
 
-    // 查 video 行（确认归属 + 拿 task_id + 当前状态）
+    // 查 video 行（确认归属 + 拿 task_id + 当前状态 + 创建时间）
     const { data: row } = await admin
       .from('videos')
-      .select('id,author_id,status,doubao_task_id')
+      .select('id,author_id,status,doubao_task_id,created_at')
       .eq('id', videoId).maybeSingle();
     if (!row) return json({ error: 'video 未找到' }, 404);
     if (row.author_id !== user.id) return json({ error: '无权访问' }, 403);
@@ -106,7 +117,14 @@ Deno.serve(async (req) => {
       }).eq('id', videoId);
       return json({ status: 'ready', videoId }, 200);
     } catch (storeErr) {
-      // 转存失败也算失败：标记 + 退款
+      // 转存失败不立即判死：豆包签名 URL 24h 内都有效，下次 poll 可重试转存（幂等 upsert）。
+      // 只有从创建起超过 6 分钟仍转存不成功，才真正判死 + 退款，避免无限重试。
+      const ageMs = Date.now() - new Date(row.created_at as string).getTime();
+      const GIVE_UP_MS = 6 * 60 * 1000;
+      if (ageMs < GIVE_UP_MS) {
+        // 保持 generating，让客户端下次 poll 再试
+        return json({ status: 'generating', videoId }, 200);
+      }
       await admin.from('videos').update({ status: 'failed' }).eq('id', videoId);
       const { data: cRow } = await admin
         .from('credits').select('balance').eq('user_id', user.id).maybeSingle();
