@@ -203,9 +203,46 @@ export async function setVisibilityRemote(id: string, vis: 'public' | 'private')
   if (error) throw error;
 }
 
+// 删除视频 = 删「当前节点 + 其所有后代分支」，不影响祖先与兄弟分支。
+// parent_id 外键是 on delete set null，直接删单条会把子节点变成孤立根，所以要先算出整个子树再一起删。
 export async function deleteVideoRemote(id: string): Promise<void> {
-  const { error } = await supabase().from('videos').delete().eq('id', id);
+  // 拿当前节点的 root_id，取整棵树
+  const { data: cur } = await supabase()
+    .from('videos').select('root_id').eq('id', id).maybeSingle();
+  const rootId = (cur as { root_id: string } | null)?.root_id;
+  let idsToDelete = [id];
+  if (rootId) {
+    const { data: nodes } = await supabase()
+      .from('videos').select('id,parent_id').eq('root_id', rootId);
+    idsToDelete = collectSubtreeIds(id, (nodes ?? []) as { id: string; parent_id: string | null }[]);
+  }
+  const { error } = await supabase().from('videos').delete().in('id', idsToDelete);
   if (error) throw error;
+}
+
+// 收集以 rootId 为根的子树内所有节点 id（含自己）。导出供本地保底复用。
+export function collectSubtreeIds(
+  rootId: string,
+  nodes: { id: string; parent_id: string | null }[],
+): string[] {
+  const childrenByParent = new Map<string, string[]>();
+  for (const n of nodes) {
+    if (!n.parent_id) continue;
+    const arr = childrenByParent.get(n.parent_id) ?? [];
+    arr.push(n.id);
+    childrenByParent.set(n.parent_id, arr);
+  }
+  const result: string[] = [];
+  const stack = [rootId];
+  const seen = new Set<string>();
+  while (stack.length) {
+    const cur = stack.pop()!;
+    if (seen.has(cur)) continue; // 防环
+    seen.add(cur);
+    result.push(cur);
+    for (const child of childrenByParent.get(cur) ?? []) stack.push(child);
+  }
+  return result;
 }
 
 export async function listLikedVideosRows(userId: string): Promise<Video[]> {

@@ -103,9 +103,18 @@ export const useLocalVideos = create<LocalVideoStore>((set, get) => ({
     }));
   },
   deleteVideo: (videoId) => {
-    set((state) => ({
-      videos: state.videos.filter((v) => v.id !== videoId),
-    }));
+    set((state) => {
+      // 删当前节点 + 其所有后代分支（不动祖先/兄弟）
+      const toDelete = new Set<string>();
+      const stack = [videoId];
+      while (stack.length) {
+        const cur = stack.pop()!;
+        if (toDelete.has(cur)) continue;
+        toDelete.add(cur);
+        for (const v of state.videos) if (v.parent_id === cur) stack.push(v.id);
+      }
+      return { videos: state.videos.filter((v) => !toDelete.has(v.id)) };
+    });
   },
 }));
 
