@@ -7,6 +7,7 @@ import { CreditsDisplay } from '@/components/ui/CreditsDisplay';
 import { colors, radius, spacing, typography } from '@/theme';
 import { useAiSettings, PROVIDERS } from '@/store/aiSettings';
 import { useTabBarSpace } from '@/hooks/useTabBarSpace';
+import { useT } from '@/i18n';
 import { useAuth } from '@/store/auth';
 import { useCredits, COST_GENERATION } from '@/store/credits';
 import { hasSupabase } from '@/api/client';
@@ -15,15 +16,11 @@ import { showToast } from '@/components/toast/Toast';
 import { showDialog } from '@/components/dialog/ConfirmDialog';
 import { grantCreditsRemote } from '@/api/supabase/creditsRepo';
 
-const PROMPT_SUGGESTIONS = [
-  '一只穿宇航服的橘猫漂浮在土星环上,慢镜头,电影感',
-  '都市夜景里的霓虹下雨,慢镜头水滴坠落',
-  '少女在樱花树下转圈,花瓣随风飘散',
-  '机器人在废墟里点燃篝火,赛博朋克风',
-];
+const PROMPT_SUGGESTION_KEYS = ['sugg.1', 'sugg.2', 'sugg.3', 'sugg.4'] as const;
 
 export default function CreateScreen() {
   const router = useRouter();
+  const t = useT();
   const { contentBottomPad } = useTabBarSpace();
   const { user, isAnonymous } = useAuth();
 
@@ -35,12 +32,10 @@ export default function CreateScreen() {
           <View style={styles.heroIcon}>
             <Lock color={colors.primary} size={28} />
           </View>
-          <Text style={styles.title}>创作需要先登录</Text>
-          <Text style={styles.sub}>
-            登录后可获得 5 个免费额度,可生成自己的 AI 短视频,在他人作品上做续写、Remix 或剪辑。
-          </Text>
+          <Text style={styles.title}>{t('create.needLogin')}</Text>
+          <Text style={styles.sub}>{t('create.needLoginSub')}</Text>
           <Pressable style={styles.button} onPress={() => router.push('/auth/login')}>
-            <Text style={styles.buttonText}>登录 / 注册</Text>
+            <Text style={styles.buttonText}>{t('create.loginRegister')}</Text>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -53,6 +48,7 @@ export default function CreateScreen() {
 function CreateAuthed({ userId, username, contentBottomPad }:
   { userId: string; username: string; contentBottomPad: number }) {
   const router = useRouter();
+  const t = useT();
   const [prompt, setPrompt] = useState('');
   const [aspect, setAspect] = useState<'9:16' | '16:9'>('9:16');
 
@@ -95,50 +91,50 @@ function CreateAuthed({ userId, username, contentBottomPad }:
 
   const onSubmit = async () => {
     if (!keyConfigured) {
-      Alert.alert('需要 API Key', '请先在设置中填写你自己的 API Key 才能生成。', [
-        { text: '取消', style: 'cancel' },
-        { text: '去设置', onPress: () => router.push('/settings' as any) },
+      Alert.alert(t('create.needKeyTitle'), t('create.needKeyMsg'), [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('create.toSettings'), onPress: () => router.push('/settings' as any) },
       ]);
       return;
     }
     if (!prompt.trim()) {
-      Alert.alert('请输入 prompt', '描述一下你想生成什么样的画面。');
+      Alert.alert(t('create.promptEmpty'), t('create.promptEmptyMsg'));
       return;
     }
     if (credits < COST_GENERATION) {
       if (hasSupabase) {
         showDialog({
-          title: '额度不足',
-          message: '你的生成额度已耗尽。可以领取 5 个体验额度继续创作。',
-          primaryLabel: '领取体验额度',
-          secondaryLabel: '知道了',
+          title: t('create.creditsLow'),
+          message: t('create.creditsExhausted'),
+          primaryLabel: t('create.claimCredits'),
+          secondaryLabel: t('common.ok'),
           icon: 'sparkles',
           onPrimary: async () => {
             try {
               await grantCreditsRemote(5);
               await syncRemote(userId);
-              showToast({ message: '已领取 5 额度,快去创作吧!' });
+              showToast({ message: t('create.claimed') });
             } catch (e: any) {
-              showToast({ message: `领取失败:${e?.message ?? '请稍后重试'}`, durationMs: 4000 });
+              showToast({ message: `${e?.message ?? '...'}`, durationMs: 4000 });
             }
           },
         });
       } else {
-        Alert.alert('额度不足', '邀请好友或完成任务可获取更多额度(M3 上线)。');
+        Alert.alert(t('create.creditsLow'), t('create.creditsLowAlt'));
       }
       return;
     }
     if (!charge(userId)) {
-      Alert.alert('额度不足', '邀请好友或完成任务可获取更多额度(敬请期待)');
+      Alert.alert(t('create.creditsLow'), t('settings.getCreditsMsg'));
       return;
     }
     try {
       await submitTextToVideo({ prompt: prompt.trim(), aspect });
       setPrompt('');
-      showToast({ message: '已提交,可在下方查看进度' });
+      showToast({ message: t('create.submitted') });
     } catch (e: any) {
       refund(userId);
-      Alert.alert('提交失败', e?.message ?? String(e));
+      Alert.alert(t('create.submitFailed'), e?.message ?? String(e));
     }
   };
 
@@ -161,31 +157,34 @@ function CreateAuthed({ userId, username, contentBottomPad }:
               <CreditsDisplay />
             </View>
           </View>
-          <Text style={styles.title}>用 AI 生成短视频</Text>
-          <Text style={styles.sub}>描述画面、人物、动作和情绪。每条视频消耗 {COST_GENERATION} 个额度。</Text>
+          <Text style={styles.title}>{t('create.title')}</Text>
+          <Text style={styles.sub}>{t('create.sub', { n: COST_GENERATION })}</Text>
 
           <TextInput
             style={styles.input}
             value={prompt}
             onChangeText={setPrompt}
-            placeholder="例:一只穿宇航服的橘猫漂浮在土星环上,慢镜头,电影感"
+            placeholder={t('create.inputPlaceholder')}
             placeholderTextColor={colors.textDim}
             multiline
             maxLength={500}
           />
           <Text style={styles.counter}>{prompt.length} / 500</Text>
 
-          <Text style={styles.sectionLabel}>试试这些灵感</Text>
+          <Text style={styles.sectionLabel}>{t('create.inspiration')}</Text>
           <View style={styles.suggestions}>
-            {PROMPT_SUGGESTIONS.map((s) => (
-              <Pressable key={s} style={styles.suggestion} onPress={() => setPrompt(s)}>
-                <Sparkles color={colors.accent} size={13} />
-                <Text style={styles.suggestionText} numberOfLines={2}>{s}</Text>
-              </Pressable>
-            ))}
+            {PROMPT_SUGGESTION_KEYS.map((k) => {
+              const s = t(k);
+              return (
+                <Pressable key={k} style={styles.suggestion} onPress={() => setPrompt(s)}>
+                  <Sparkles color={colors.accent} size={13} />
+                  <Text style={styles.suggestionText} numberOfLines={2}>{s}</Text>
+                </Pressable>
+              );
+            })}
           </View>
 
-          <Text style={styles.sectionLabel}>模型</Text>
+          <Text style={styles.sectionLabel}>{t('ai.model')}</Text>
           <View style={styles.aspectRow}>
             {providerModels.map((m) => (
               <Pressable
@@ -204,19 +203,17 @@ function CreateAuthed({ userId, username, contentBottomPad }:
           </View>
           {!keyConfigured && (
             <Pressable style={styles.keyWarn} onPress={() => router.push('/settings' as any)}>
-              <Text style={styles.keyWarnText}>
-                需先在设置中填写自己的 API Key 才能生成。点此前往设置 →
-              </Text>
+              <Text style={styles.keyWarnText}>{t('create.needKey')}</Text>
             </Pressable>
           )}
 
-          <Text style={styles.sectionLabel}>画幅</Text>
+          <Text style={styles.sectionLabel}>{t('create.aspect')}</Text>
           <View style={styles.aspectRow}>
             {(['9:16', '16:9'] as const).map((a) => (
               <Pressable key={a} style={[styles.aspectChip, aspect === a && styles.aspectChipActive]} onPress={() => setAspect(a)}>
                 <Text style={[styles.aspectText, aspect === a && styles.aspectTextActive]}>{a}</Text>
                 <Text style={[styles.aspectHint, aspect === a && styles.aspectHintActive]}>
-                  {a === '9:16' ? '竖屏' : '横屏'}
+                  {a === '9:16' ? t('create.aspectPortrait') : t('create.aspectLandscape')}
                 </Text>
               </Pressable>
             ))}
@@ -228,19 +225,15 @@ function CreateAuthed({ userId, username, contentBottomPad }:
             onPress={onSubmit}
           >
             <Sparkles color="#fff" size={18} />
-            <Text style={styles.buttonText}>
-              提交生成 (消耗 {COST_GENERATION})
-            </Text>
+            <Text style={styles.buttonText}>{t('create.submit', { n: COST_GENERATION })}</Text>
           </Pressable>
 
-          <Text style={styles.note}>
-            提交后可继续刷视频,生成在后台进行,完成时会通知你。
-          </Text>
+          <Text style={styles.note}>{t('create.submittedNote')}</Text>
 
           {/* 进行中的任务 */}
           {activeJobs.length > 0 && (
             <View style={styles.jobsBlock}>
-              <Text style={styles.sectionLabel}>正在生成 · {activeJobs.length}</Text>
+              <Text style={styles.sectionLabel}>{t('create.generating', { n: activeJobs.length })}</Text>
               {activeJobs.map((j) => <JobCard key={j.id} job={j} />)}
             </View>
           )}
@@ -248,7 +241,7 @@ function CreateAuthed({ userId, username, contentBottomPad }:
           {/* 已完成 / 失败的最近任务 */}
           {recentJobs.length > 0 && (
             <View style={styles.jobsBlock}>
-              <Text style={styles.sectionLabel}>最近任务</Text>
+              <Text style={styles.sectionLabel}>{t('create.recentJobs')}</Text>
               {recentJobs.map((j) => (
                 <JobCard
                   key={j.id}
@@ -265,6 +258,7 @@ function CreateAuthed({ userId, username, contentBottomPad }:
 }
 
 function JobCard({ job, onPress }: { job: AiJobRecord; onPress?: () => void }) {
+  const t = useT();
   const cancel = useJobs((s) => s.cancel);
   const icon = job.status === 'succeeded' ? <CheckCircle2 color={colors.success} size={18} />
     : job.status === 'failed' ? <XCircle color={colors.danger} size={18} />
@@ -287,7 +281,7 @@ function JobCard({ job, onPress }: { job: AiJobRecord; onPress?: () => void }) {
       </View>
       {(job.status === 'queued' || job.status === 'running') && (
         <Pressable hitSlop={6} onPress={() => cancel(job.id)} style={styles.cancelBtn}>
-          <Text style={styles.cancelTxt}>取消</Text>
+          <Text style={styles.cancelTxt}>{t('common.cancel')}</Text>
         </Pressable>
       )}
       {job.status === 'succeeded' && onPress && (

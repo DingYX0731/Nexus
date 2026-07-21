@@ -17,10 +17,12 @@ import { useAuth } from '@/store/auth';
 import { hasSupabase } from '@/api/client';
 import { LoadingState, ErrorState, EmptyState } from '@/components/ui/ScreenState';
 import { FollowButton } from '@/components/social/FollowButton';
+import { useT, type TransKey } from '@/i18n';
 
 export default function VideoDetail() {
   const { id: routeId } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const t = useT();
   const qc = useQueryClient();
   const { user } = useAuth();
   const [commentsOpen, setCommentsOpen] = useState(false);
@@ -93,7 +95,7 @@ export default function VideoDetail() {
       useLocalVideos.getState().deleteVideo(id!);
       qc.invalidateQueries({ queryKey: ['feed'] });
       qc.invalidateQueries({ queryKey: ['myVideos', user?.id] });
-      showToast({ message: '视频已删除' });
+      showToast({ message: t('video.deleted') });
       if (router.canGoBack()) router.back();
       else router.replace('/(tabs)');
     },
@@ -114,11 +116,11 @@ export default function VideoDetail() {
           </Pressable>
         </View>
         {isLoading ? (
-          <LoadingState text="加载中…" />
+          <LoadingState text={t('common.loading')} />
         ) : isError ? (
           <ErrorState onRetry={videoRefetch} />
         ) : (
-          <EmptyState title="视频不存在" />
+          <EmptyState title={t('video.notFound')} />
         )}
       </SafeAreaView>
     );
@@ -149,7 +151,7 @@ export default function VideoDetail() {
           {isChain && (
             <View style={styles.chainBadge} pointerEvents="none">
               <GitBranch color="#fff" size={11} />
-              <Text style={styles.chainBadgeText}>{chain.length} 段连贯播放</Text>
+              <Text style={styles.chainBadgeText}>{t('video.chainPlay', { n: chain.length })}</Text>
             </View>
           )}
         </View>
@@ -157,13 +159,13 @@ export default function VideoDetail() {
         <View style={styles.meta}>
           {video.remix_kind && (
             <Pressable style={styles.kindBadge} hitSlop={6} onPress={() => Alert.alert(
-              kindLabel(video.remix_kind!),
+              t(kindLabelKey(video.remix_kind!)),
               video.remix_kind === 'continuation'
-                ? '续写：以原视频最后一帧为起点，生成新一段画面，叙事接力。'
-                : 'Remix：基于原视频主题，用新的 prompt 重新生成，呈现不同风格。',
+                ? t('video.continuationDesc')
+                : t('video.remixDesc'),
             )}>
               <GitBranch color={colors.accent} size={11} />
-              <Text style={styles.kindText}>{kindLabel(video.remix_kind)}</Text>
+              <Text style={styles.kindText}>{t(kindLabelKey(video.remix_kind))}</Text>
               <Info color={colors.accent} size={11} />
             </Pressable>
           )}
@@ -172,7 +174,7 @@ export default function VideoDetail() {
             <Text style={styles.author}>@{video.author?.username ?? 'unknown'}</Text>
             {!!video.author_id && <FollowButton targetUserId={video.author_id} />}
             <Text style={styles.dot}>·</Text>
-            <Text style={styles.statText}>{video.stats?.play_count ?? 0} 次播放</Text>
+            <Text style={styles.statText}>{t('video.plays', { n: video.stats?.play_count ?? 0 })}</Text>
             {isOwner && (
               <>
                 <Text style={styles.dot}>·</Text>
@@ -181,7 +183,7 @@ export default function VideoDetail() {
                     ? <Globe size={10} color={colors.success} />
                     : <Lock size={10} color={colors.warning} />}
                   <Text style={[styles.visText, { color: video.visibility === 'public' ? colors.success : colors.warning }]}>
-                    {video.visibility === 'public' ? '已发布' : '草稿'}
+                    {video.visibility === 'public' ? t('video.published') : t('video.draft')}
                   </Text>
                 </View>
               </>
@@ -197,31 +199,31 @@ export default function VideoDetail() {
                 style={styles.ownerBtn}
                 onPress={() => {
                   visibilityMut.mutate('private');
-                  showToast({ message: '已设为草稿，从 Feed 隐藏' });
+                  showToast({ message: t('video.setDraftDone') });
                 }}
               >
                 <Lock color={colors.text} size={16} />
-                <Text style={styles.ownerBtnText}>设为草稿</Text>
+                <Text style={styles.ownerBtnText}>{t('video.setDraft')}</Text>
               </Pressable>
             ) : (
               <Pressable
                 style={[styles.ownerBtn, styles.ownerBtnPrimary]}
                 onPress={() => {
                   visibilityMut.mutate('public');
-                  showToast({ message: '已发布，所有人都能看到', actionLabel: '去 Feed', onAction: () => router.replace('/(tabs)') });
+                  showToast({ message: t('video.publishedDone'), actionLabel: t('video.toFeed'), onAction: () => router.replace('/(tabs)') });
                 }}
               >
                 <Globe color="#fff" size={16} />
-                <Text style={[styles.ownerBtnText, { color: '#fff' }]}>发布到 Feed</Text>
+                <Text style={[styles.ownerBtnText, { color: '#fff' }]}>{t('video.publish')}</Text>
               </Pressable>
             )}
             <Pressable
               style={[styles.ownerBtn, styles.ownerBtnDanger]}
               onPress={() => {
-                Alert.alert('删除这条视频？', '此操作不可撤销', [
-                  { text: '取消', style: 'cancel' },
+                Alert.alert(t('video.deleteConfirm'), t('video.deleteMsg'), [
+                  { text: t('common.cancel'), style: 'cancel' },
                   {
-                    text: '删除', style: 'destructive', onPress: () => {
+                    text: t('common.delete'), style: 'destructive', onPress: () => {
                       deleteMut.mutate();
                     },
                   },
@@ -239,7 +241,7 @@ export default function VideoDetail() {
             label={String(video.stats?.like_count ?? 0)}
             onPress={() => {
               if (!user) {
-                showAuthRequired('登录后即可点赞 ❤️', () => router.push('/auth/login'));
+                showAuthRequired(t('video.likePrompt'), () => router.push('/auth/login'));
                 return;
               }
               likeMut.mutate();
@@ -253,10 +255,10 @@ export default function VideoDetail() {
           <ActionBtn
             icon={<GitBranch color={colors.text} size={22} strokeWidth={1.8} />}
             // 续写数统一为整个系列的续写总数(树里除根外的节点数)，同系列每个视频看到的都一致
-            label={`续写 ${hasSeries ? series.length - 1 : (video.stats?.fork_count ?? 0)}`}
+            label={t('video.forks', { n: hasSeries ? series.length - 1 : (video.stats?.fork_count ?? 0) })}
             onPress={() => {
               if (!user) {
-                showAuthRequired('登录后即可续写、Remix ✨', () => router.push('/auth/login'));
+                showAuthRequired(t('video.remixPrompt'), () => router.push('/auth/login'));
                 return;
               }
               router.push(`/remix/${video.id}`);
@@ -264,9 +266,9 @@ export default function VideoDetail() {
           />
           <ActionBtn
             icon={<Share2 color={colors.text} size={22} strokeWidth={1.8} />}
-            label="分享"
+            label={t('video.share')}
             onPress={() => {
-              Share.share({ message: `在 AI Shorts 看到一条不错的视频：${video.prompt}` }).catch(() => undefined);
+              Share.share({ message: t('video.shareMsg', { prompt: video.prompt ?? '' }) }).catch(() => undefined);
             }}
           />
         </View>
@@ -275,8 +277,8 @@ export default function VideoDetail() {
           <View style={styles.stepper}>
             <View style={styles.stepperHeader}>
               <GitBranch color={colors.accent} size={14} />
-              <Text style={styles.stepperTitle}>完整故事 · {series.length} 集</Text>
-              <Text style={styles.stepperHint}>← 滑动 · 点圆点切换</Text>
+              <Text style={styles.stepperTitle}>{t('video.fullStory', { n: series.length })}</Text>
+              <Text style={styles.stepperHint}>{t('video.stepperHint')}</Text>
             </View>
             {/* 圆点树：按真实父子关系连线（无子的分支不会连向下一集），点圆点原地切换 */}
             {(() => {
@@ -323,7 +325,7 @@ export default function VideoDetail() {
               onPress={() => router.push(`/remix/${id}` as any)}
             >
               <GitBranch color={colors.accent} size={14} />
-              <Text style={styles.stepperRemixText}>从这一集续写</Text>
+              <Text style={styles.stepperRemixText}>{t('video.remixFromHere')}</Text>
             </Pressable>
           </View>
         )}
@@ -396,11 +398,11 @@ function layoutTree(nodes: SeriesNode[]): { positioned: PositionedNode[]; edges:
   return { positioned, edges, width, height };
 }
 
-function kindLabel(k: RemixKind | null) {
+function kindLabelKey(k: RemixKind | null): TransKey {
   switch (k) {
-    case 'continuation': return '续写自他人';
-    case 'prompt_remix': return 'Remix 自他人';
-    default: return '原视频';
+    case 'continuation': return 'video.kindContinuation';
+    case 'prompt_remix': return 'video.kindRemix';
+    default: return 'video.kindOriginal';
   }
 }
 

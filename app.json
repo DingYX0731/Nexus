@@ -45,7 +45,8 @@
           "photosPermission": "允许 AI Shorts 访问相册以上传头像。"
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-localization"
     ],
     "experiments": {
       "typedRoutes": true

@@ -19,9 +19,12 @@ import { CreditsDisplay } from '@/components/ui/CreditsDisplay';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { getProfile } from '@/api/supabase/profilesRepo';
 import { AiProviderSection } from '@/components/settings/AiProviderSection';
+import { LanguageSection } from '@/components/settings/LanguageSection';
+import { useT } from '@/i18n';
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const t = useT();
   const { user, isAnonymous, signOut } = useAuth();
   const creditsMap = useCredits((s) => s.byUser);
   const ensureCreditsInit = useCredits((s) => s.ensureInit);
@@ -37,13 +40,13 @@ export default function SettingsScreen() {
       try {
         await grantCreditsRemote(5);
         await syncRemote(user.id);
-        showToast({ message: '已添加 5 个额度' });
+        showToast({ message: t('settings.addedCredits') });
       } catch (e: any) {
-        showToast({ message: `添加失败：${e?.message ?? '请稍后重试'}`, durationMs: 4000 });
+        showToast({ message: `${e?.message ?? '...'}`, durationMs: 4000 });
       }
     } else {
       grant(user.id, 5);
-      showToast({ message: '已添加 5 个额度' });
+      showToast({ message: t('settings.addedCredits') });
     }
   };
 
@@ -75,12 +78,12 @@ export default function SettingsScreen() {
     : (user ? videos.filter((v) => v.author_id === user.id).length : 0);
 
   const onLogout = () => {
-    Alert.alert('退出登录?', '退出后将返回匿名状态。', [
-      { text: '取消', style: 'cancel' },
-      { text: '退出', style: 'destructive', onPress: () => {
+    Alert.alert(t('settings.logoutConfirm'), t('settings.logoutMsg'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('settings.logout'), style: 'destructive', onPress: () => {
         void signOut();
         router.back();
-        showToast({ message: '已退出登录' });
+        showToast({ message: t('settings.loggedOut') });
       }},
     ]);
   };
@@ -91,7 +94,7 @@ export default function SettingsScreen() {
         <Pressable hitSlop={12} onPress={() => router.back()}>
           <X color={colors.text} size={24} />
         </Pressable>
-        <Text style={styles.headerTitle}>设置</Text>
+        <Text style={styles.headerTitle}>{t('settings.title')}</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -102,7 +105,7 @@ export default function SettingsScreen() {
             <UserAvatar user={{ username: user.username, avatar_url: profile?.avatar_url ?? null }} size={48} />
             <View style={{ flex: 1 }}>
               <Text style={styles.profileName}>@{user.username}</Text>
-              <Text style={styles.profileMeta}>{myVideoCount} 个作品 · {credits} 个额度</Text>
+              <Text style={styles.profileMeta}>{myVideoCount} · {credits}</Text>
             </View>
           </View>
         )}
@@ -112,7 +115,7 @@ export default function SettingsScreen() {
           <View style={styles.sectionBody}>
             <Row
               icon={<Pencil color={colors.text} size={18} />}
-              label="编辑资料"
+              label={t('settings.editProfile')}
               onPress={() => router.push('/profile/edit' as any)}
               chevron
             />
@@ -120,11 +123,11 @@ export default function SettingsScreen() {
         )}
 
         {/* 账户 */}
-        <Section title="账户">
+        <Section title={t('settings.section.account')}>
           <Row
             icon={<UserIcon color={colors.text} size={18} />}
-            label="账户信息"
-            value={isAnonymous ? '匿名访客' : user?.username ? `@${user.username}` : ''}
+            label={t('settings.accountInfo')}
+            value={isAnonymous ? t('settings.anonymous') : user?.username ? `@${user.username}` : ''}
             onPress={() => {
               if (isAnonymous) router.push('/auth/login');
             }}
@@ -132,13 +135,13 @@ export default function SettingsScreen() {
           />
           <Row
             icon={<Coins color={colors.warning} size={18} />}
-            label="额度"
+            label={t('settings.credits')}
             rightNode={<CreditsDisplay />}
             onPress={() => {
               if (!user) return;
-              Alert.alert('获取额度', '邀请好友、完成任务即可获取更多额度(敬请期待)', [
-                { text: '知道了' },
-                { text: '+5 额度(演示)', onPress: () => { void grantDemoCredits(); }},
+              Alert.alert(t('settings.getCredits'), t('settings.getCreditsMsg'), [
+                { text: t('common.ok') },
+                { text: t('settings.addDemoCredits'), onPress: () => { void grantDemoCredits(); }},
               ]);
             }}
             chevron
@@ -148,35 +151,38 @@ export default function SettingsScreen() {
         {/* 创作：AI 服务商 + 自带 API Key */}
         <AiProviderSection />
 
+        {/* 语言 */}
+        <LanguageSection />
+
         {/* 通知 */}
-        <Section title="通知">
-          <Row icon={<Bell color={colors.text} size={18} />} label="消息推送" value="已开启" note="敬请期待" />
+        <Section title={t('settings.section.notify')}>
+          <Row icon={<Bell color={colors.text} size={18} />} label={t('settings.notifyPush')} value={t('settings.notifyOn')} note={t('settings.comingSoon')} />
         </Section>
 
         {/* 关于 */}
-        <Section title="关于">
+        <Section title={t('settings.section.about')}>
           <Row
             icon={<Info color={colors.text} size={18} />}
-            label="关于 AI Shorts"
-            onPress={() => Alert.alert('AI Shorts', 'COMP7506 课程项目 · v0.1.0\n\n用 AI 生成、续写、Remix 短视频。')}
+            label={t('settings.about')}
+            onPress={() => Alert.alert('AI Shorts', 'COMP7506 · v0.1.0')}
             chevron
           />
           <Row
             icon={<Shield color={colors.text} size={18} />}
-            label="隐私政策"
-            onPress={() => Alert.alert('隐私政策', '当前为 demo 版本,数据仅保存在本地。')}
+            label={t('settings.privacy')}
+            onPress={() => Alert.alert(t('settings.privacy'), 'demo')}
             chevron
           />
           <Row
             icon={<FileText color={colors.text} size={18} />}
-            label="用户协议"
-            onPress={() => Alert.alert('用户协议', '使用本应用即表示您同意 demo 演示用途的条款。')}
+            label={t('settings.terms')}
+            onPress={() => Alert.alert(t('settings.terms'), 'demo')}
             chevron
           />
           <Row
             icon={<HelpCircle color={colors.text} size={18} />}
-            label="意见反馈"
-            onPress={() => Share.share({ message: '我在使用 AI Shorts,有些想法想分享…' }).catch(() => undefined)}
+            label={t('settings.feedback')}
+            onPress={() => Share.share({ message: 'AI Shorts' }).catch(() => undefined)}
             chevron
           />
         </Section>
@@ -186,7 +192,7 @@ export default function SettingsScreen() {
           <View style={{ marginTop: spacing.xl }}>
             <Pressable style={styles.logoutBtn} onPress={onLogout}>
               <LogOut color={colors.danger} size={18} />
-              <Text style={styles.logoutText}>退出登录</Text>
+              <Text style={styles.logoutText}>{t('settings.logout')}</Text>
             </Pressable>
           </View>
         )}

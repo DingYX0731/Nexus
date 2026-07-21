@@ -8,8 +8,10 @@ import { Sparkles, KeyRound, Check, Trash2, ShieldCheck } from 'lucide-react-nat
 import { colors, radius, spacing, typography } from '@/theme';
 import { useAiSettings, PROVIDERS, isValidApiKeyFormat, type ProviderId } from '@/store/aiSettings';
 import { showToast } from '@/components/toast/Toast';
+import { useT } from '@/i18n';
 
 export function AiProviderSection() {
+  const t = useT();
   const provider = useAiSettings((s) => s.provider);
   const modelByProvider = useAiSettings((s) => s.modelByProvider);
   const hasKey = useAiSettings((s) => s.hasKey);
@@ -32,30 +34,30 @@ export function AiProviderSection() {
   const onSaveKey = async () => {
     const ok = await saveKey(provider, keyInput);
     if (!ok) {
-      showToast({ message: 'API Key 格式无效（不能含空格、过长）', durationMs: 3500 });
+      showToast({ message: t('ai.keyInvalid'), durationMs: 3500 });
       return;
     }
     setKeyInput('');
     setEditing(false);
-    showToast({ message: 'API Key 已安全保存到本机' });
+    showToast({ message: t('ai.keySaved') });
   };
 
   const onClearKey = async () => {
     await clearKey(provider);
     setKeyInput('');
     setEditing(false);
-    showToast({ message: '已清除本机保存的 API Key' });
+    showToast({ message: t('ai.keyCleared') });
   };
 
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>创作</Text>
+      <Text style={styles.sectionTitle}>{t('settings.section.create')}</Text>
       <View style={styles.body}>
         {/* 服务商选择 */}
         <View style={styles.block}>
           <View style={styles.blockHead}>
             <Sparkles color={colors.accent} size={18} />
-            <Text style={styles.blockLabel}>AI 服务商</Text>
+            <Text style={styles.blockLabel}>{t('ai.provider')}</Text>
           </View>
           <View style={styles.chips}>
             {PROVIDERS.map((p) => (
@@ -71,7 +73,7 @@ export function AiProviderSection() {
 
         {/* 模型选择 */}
         <View style={styles.block}>
-          <Text style={styles.blockSub}>模型</Text>
+          <Text style={styles.blockSub}>{t('ai.model')}</Text>
           <View style={styles.chips}>
             {current.models.map((m) => (
               <Chip
@@ -91,11 +93,11 @@ export function AiProviderSection() {
         <View style={styles.block}>
           <View style={styles.blockHead}>
             <KeyRound color={colors.text} size={18} />
-            <Text style={styles.blockLabel}>API Key</Text>
+            <Text style={styles.blockLabel}>{t('ai.apiKey')}</Text>
             {keyConfigured && !editing && (
               <View style={styles.okBadge}>
                 <Check color={colors.success} size={13} />
-                <Text style={styles.okText}>已配置</Text>
+                <Text style={styles.okText}>{t('ai.configured')}</Text>
               </View>
             )}
           </View>
@@ -105,11 +107,11 @@ export function AiProviderSection() {
               <Text style={styles.masked}>••••••••••••••••</Text>
               <View style={styles.keyBtns}>
                 <Pressable style={styles.smallBtn} onPress={() => setEditing(true)}>
-                  <Text style={styles.smallBtnText}>更换</Text>
+                  <Text style={styles.smallBtnText}>{t('ai.replace')}</Text>
                 </Pressable>
                 <Pressable style={[styles.smallBtn, styles.dangerBtn]} onPress={onClearKey}>
                   <Trash2 color={colors.danger} size={13} />
-                  <Text style={[styles.smallBtnText, { color: colors.danger }]}>清除</Text>
+                  <Text style={[styles.smallBtnText, { color: colors.danger }]}>{t('ai.clear')}</Text>
                 </Pressable>
               </View>
             </View>
@@ -133,11 +135,11 @@ export function AiProviderSection() {
                   disabled={!isValidApiKeyFormat(keyInput.trim())}
                   onPress={onSaveKey}
                 >
-                  <Text style={[styles.smallBtnText, { color: '#fff' }]}>保存</Text>
+                  <Text style={[styles.smallBtnText, { color: '#fff' }]}>{t('common.save')}</Text>
                 </Pressable>
                 {editing && (
                   <Pressable style={styles.smallBtn} onPress={() => { setEditing(false); setKeyInput(''); }}>
-                    <Text style={styles.smallBtnText}>取消</Text>
+                    <Text style={styles.smallBtnText}>{t('common.cancel')}</Text>
                   </Pressable>
                 )}
               </View>
@@ -146,10 +148,7 @@ export function AiProviderSection() {
 
           <View style={styles.securityNote}>
             <ShieldCheck color={colors.textMuted} size={13} />
-            <Text style={styles.securityText}>
-              生成需使用你自己的 API Key。Key 仅加密保存在本机（系统钥匙串），生成时经 HTTPS
-              上送、用完即弃，服务端不留存、不记录。
-            </Text>
+            <Text style={styles.securityText}>{t('ai.security')}</Text>
           </View>
         </View>
       </View>

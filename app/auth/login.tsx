@@ -6,9 +6,11 @@ import { X, Sparkles, AlertCircle } from 'lucide-react-native';
 import { colors, radius, spacing, typography } from '@/theme';
 import { useAuth } from '@/store/auth';
 import { validateEmail, validatePassword, validateUsername } from '@/api/auth/validateUsername';
+import { useT } from '@/i18n';
 
 export default function LoginScreen() {
   const router = useRouter();
+  const t = useT();
   const { signUp, signIn } = useAuth();
   const [mode, setMode] = useState<'signIn' | 'signUp'>('signIn');
   const [email, setEmail] = useState('');
@@ -32,7 +34,7 @@ export default function LoginScreen() {
       : await signIn(email.trim(), password);
     setSubmitting(false);
     if (res.ok) router.back();
-    else setServerError(res.error ?? '操作失败，请重试');
+    else setServerError(res.error ?? t('login.failed'));
   };
 
   return (
@@ -51,12 +53,12 @@ export default function LoginScreen() {
             <Sparkles color={colors.primary} size={28} />
           </View>
           <Text style={styles.title}>
-            {mode === 'signIn' ? '登录账号' : '创建账号'}
+            {mode === 'signIn' ? t('login.signInTitle') : t('login.signUpTitle')}
           </Text>
           <Text style={styles.sub}>
             {mode === 'signIn'
-              ? '登录后获得 5 个免费额度，可生成 AI 视频、点赞、续写。'
-              : '注册后获得 5 个免费额度，可生成 AI 视频、点赞、续写。'}
+              ? t('login.signInSub')
+              : t('login.signUpSub')}
           </Text>
 
           <View style={styles.fieldGroup}>
@@ -66,7 +68,7 @@ export default function LoginScreen() {
                 style={styles.input}
                 value={email}
                 onChangeText={setEmail}
-                placeholder="邮箱"
+                placeholder={t('login.email')}
                 placeholderTextColor={colors.textDim}
                 keyboardType="email-address"
                 autoCapitalize="none"
@@ -82,7 +84,7 @@ export default function LoginScreen() {
                 style={styles.input}
                 value={password}
                 onChangeText={setPassword}
-                placeholder="密码（至少 6 位）"
+                placeholder={t('login.password')}
                 placeholderTextColor={colors.textDim}
                 secureTextEntry
                 autoCapitalize="none"
@@ -99,7 +101,7 @@ export default function LoginScreen() {
                   style={styles.input}
                   value={username}
                   onChangeText={setUsername}
-                  placeholder="用户名（2-20 字符）"
+                  placeholder={t('login.username')}
                   placeholderTextColor={colors.textDim}
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -125,20 +127,20 @@ export default function LoginScreen() {
             onPress={onSubmit}
           >
             <Text style={styles.buttonText}>
-              {submitting ? '请稍候…' : mode === 'signIn' ? '登录' : '注册'}
+              {submitting ? t('login.submitting') : mode === 'signIn' ? t('login.signIn') : t('login.signUp')}
             </Text>
           </Pressable>
 
           {/* Mode toggle */}
           <Pressable onPress={() => { setMode(mode === 'signIn' ? 'signUp' : 'signIn'); setServerError(null); }}>
             <Text style={styles.skipText}>
-              {mode === 'signIn' ? '没有账号？去注册' : '已有账号？去登录'}
+              {mode === 'signIn' ? t('login.toSignUp') : t('login.toSignIn')}
             </Text>
           </Pressable>
 
           {/* Anonymous skip */}
           <Pressable style={styles.skipBtn} onPress={() => router.back()}>
-            <Text style={styles.skipText}>先不登录，继续看视频</Text>
+            <Text style={styles.skipText}>{t('login.skip')}</Text>
           </Pressable>
         </View>
       </KeyboardAvoidingView>

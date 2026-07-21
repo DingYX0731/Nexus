@@ -7,8 +7,10 @@ import { colors, typography } from '@/theme';
 import { TAB_BAR_BASE } from '@/hooks/useTabBarSpace';
 import { hasSupabase } from '@/api/client';
 import { unreadCountRemote } from '@/api/supabase/notificationsRepo';
+import { useT } from '@/i18n';
 
 export default function TabLayout() {
+  const t = useT();
   const insets = useSafeAreaInsets();
   const tabBarHeight = TAB_BAR_BASE + insets.bottom;
 
@@ -40,7 +42,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: '首页',
+          title: t('tab.home'),
           tabBarIcon: ({ color, focused }) => (
             <Home color={color} size={24} fill={focused ? color : 'transparent'} strokeWidth={focused ? 2.4 : 2} />
           ),
@@ -49,7 +51,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="create"
         options={{
-          title: '创作',
+          title: t('tab.create'),
           tabBarIcon: ({ color, focused }) => (
             <Plus color={color} size={26} strokeWidth={focused ? 2.6 : 2.2} />
           ),
@@ -58,7 +60,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="inbox"
         options={{
-          title: '通知',
+          title: t('tab.inbox'),
           tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
           tabBarIcon: ({ color, focused }) => (
             <Bell color={color} size={24} fill={focused ? color : 'transparent'} strokeWidth={focused ? 2.4 : 2} />
@@ -68,7 +70,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: '我',
+          title: t('tab.profile'),
           tabBarIcon: ({ color, focused }) => (
             <User color={color} size={24} fill={focused ? color : 'transparent'} strokeWidth={focused ? 2.4 : 2} />
           ),
