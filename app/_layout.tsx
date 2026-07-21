@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Stack } from 'expo-router';
 import { QueryClientProvider } from '@tanstack/react-query';
@@ -8,6 +8,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import 'react-native-url-polyfill/auto';
 import { ToastHost } from '@/components/toast/Toast';
 import { ConfirmDialogHost } from '@/components/dialog/ConfirmDialog';
+import { BrandSplash, consumeSplashShow } from '@/components/splash/BrandSplash';
 import { preloadDemoVideos } from '@/ai/demoVideos';
 import { useAuth } from '@/store/auth';
 import { supabase, hasSupabase } from '@/api/client';
@@ -20,6 +21,9 @@ setTimeout(() => {
 }, 1500);
 
 export default function RootLayout() {
+  // 冷启动首次挂载显示品牌启动页（同进程内切回不再显示）
+  const [showSplash, setShowSplash] = useState(() => consumeSplashShow());
+
   useEffect(() => {
     SplashScreen.hideAsync().catch(() => undefined);
     // 预解析打包的 demo 视频资源,确保首帧/播放前 localUri 就绪。
@@ -69,6 +73,7 @@ export default function RootLayout() {
           </Stack>
           <ToastHost />
           <ConfirmDialogHost />
+          {showSplash && <BrandSplash onDone={() => setShowSplash(false)} />}
         </QueryClientProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

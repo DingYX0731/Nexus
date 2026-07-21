@@ -31,10 +31,14 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
-          "android": {
-            "image": "./assets/images/splash-icon.png",
-            "imageWidth": 76
+          "backgroundColor": "#000000",
+          "image": "./assets/images/nexus-logo.png",
+          "imageWidth": 220,
+          "resizeMode": "contain",
+          "dark": {
+            "backgroundColor": "#000000",
+            "image": "./assets/images/nexus-logo.png",
+            "imageWidth": 220
           }
         }
       ],
