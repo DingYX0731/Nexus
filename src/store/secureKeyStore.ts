@@ -4,6 +4,7 @@
 // 直接 import 会在加载时崩溃。这里用 lazy require + try/catch 探测，缺失则退回 AsyncStorage，
 // 保证 app 始终能启动。重建 dev client 后自动切回安全存储。
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { requireOptionalNativeModule } from 'expo-modules-core';
 
 type SecureStoreModule = {
   setItemAsync: (k: string, v: string, opts?: Record<string, unknown>) => Promise<void>;
@@ -12,14 +13,18 @@ type SecureStoreModule = {
   WHEN_UNLOCKED_THIS_DEVICE_ONLY?: unknown;
 };
 
-// 惰性探测原生模块，只探一次。访问任一方法若抛错即视为不可用。
+// 惰性探测原生模块，只探一次。
+// 关键：直接 import/require 'expo-secure-store' 在原生模块缺失时会硬抛，普通 try/catch 兜不住。
+// 用 Expo 官方的 requireOptionalNativeModule —— 原生模块不存在时返回 null 而非抛错，从根上避免崩溃。
+// 原生模块存在时才 require 上层 JS 封装（提供 setItemAsync 等便捷方法）。
 let cached: SecureStoreModule | null | undefined;
 function getSecureStore(): SecureStoreModule | null {
   if (cached !== undefined) return cached;
   try {
+    const native = requireOptionalNativeModule('ExpoSecureStore');
+    if (!native) { cached = null; return cached; }
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const mod = require('expo-secure-store') as SecureStoreModule;
-    // 触发一次原生桥访问，确认真的可用（有些环境 require 成功但调用才抛）
     if (typeof mod?.getItemAsync !== 'function') throw new Error('no getItemAsync');
     cached = mod;
   } catch {
