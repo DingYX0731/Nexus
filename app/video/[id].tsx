@@ -1,4 +1,5 @@
 import { View, Text, Pressable, StyleSheet, ScrollView, Share, Alert } from 'react-native';
+import Svg, { Line } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -277,35 +278,44 @@ export default function VideoDetail() {
               <Text style={styles.stepperTitle}>完整故事 · {series.length} 集</Text>
               <Text style={styles.stepperHint}>← 滑动 · 点圆点切换</Text>
             </View>
-            {/* 圆点树：每列一层(depth)，圆点只显集数；从左往右用连线展开，点圆点原地切换 */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.treeTrack}
-            >
-              {groupByDepth(series).map((column, colIdx) => (
-                <View key={colIdx} style={styles.dotColumn}>
-                  {colIdx > 0 && <View style={styles.dotConnector} />}
-                  <View style={styles.dotColItems}>
-                    {column.map((node) => {
+            {/* 圆点树：按真实父子关系连线（无子的分支不会连向下一集），点圆点原地切换 */}
+            {(() => {
+              const { positioned, edges, width, height } = layoutTree(series);
+              return (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <View style={{ width, height }}>
+                    {/* 连线层 */}
+                    <Svg width={width} height={height} style={StyleSheet.absoluteFill}>
+                      {edges.map(([from, to], i) => (
+                        <Line
+                          key={i}
+                          x1={from.x} y1={from.y} x2={to.x} y2={to.y}
+                          stroke={colors.border} strokeWidth={2}
+                        />
+                      ))}
+                    </Svg>
+                    {/* 节点层 */}
+                    {positioned.map((node) => {
                       const isCurrent = node.id === id;
                       return (
                         <Pressable
                           key={node.id}
-                          hitSlop={8}
-                          style={styles.dotWrap}
+                          hitSlop={6}
                           onPress={() => { if (!isCurrent) setSelectedId(node.id); }}
+                          style={[styles.epDot, isCurrent && styles.epDotActive, {
+                            position: 'absolute',
+                            left: node.x - DOT / 2,
+                            top: node.y - DOT / 2,
+                          }]}
                         >
-                          <View style={[styles.epDot, isCurrent && styles.epDotActive]}>
-                            <Text style={[styles.dotText, isCurrent && styles.dotTextActive]}>{colIdx + 1}</Text>
-                          </View>
+                          <Text style={[styles.dotText, isCurrent && styles.dotTextActive]}>{node.ep}</Text>
                         </Pressable>
                       );
                     })}
                   </View>
-                </View>
-              ))}
-            </ScrollView>
+                </ScrollView>
+              );
+            })()}
             {/* 从当前这一集继续续写（同一集可续写多个分支） */}
             <Pressable
               style={styles.stepperRemixBtn}
@@ -336,17 +346,53 @@ function ActionBtn({ icon, label, onPress }: { icon: React.ReactNode; label: str
   );
 }
 
-// 按 depth 分组成列：每列是同一层的节点（同一父的多个续写=分支，会落在同列）。
-function groupByDepth(nodes: SeriesNode[]): SeriesNode[][] {
+// 步道树布局常量
+const DOT = 40;        // 圆点直径
+const COL_GAP = 40;    // 列间距(横向连线长度)
+const ROW_GAP = 16;    // 同列节点行间距
+const PAD = 10;        // 画布内边距
+
+interface PositionedNode extends SeriesNode { col: number; row: number; x: number; y: number; ep: number; }
+
+// 把系列树布局成坐标：col=depth，同列多个分支按 createdAt 竖直排开。
+// 返回定位后的节点 + 真实的 parent→child 边（只有真实父子才连线）。
+function layoutTree(nodes: SeriesNode[]): { positioned: PositionedNode[]; edges: [PositionedNode, PositionedNode][]; width: number; height: number } {
+  // 按 depth 分列
   const byDepth = new Map<number, SeriesNode[]>();
   for (const n of nodes) {
     const arr = byDepth.get(n.depth) ?? [];
     arr.push(n);
     byDepth.set(n.depth, arr);
   }
-  return [...byDepth.keys()]
-    .sort((a, b) => a - b)
-    .map((d) => byDepth.get(d)!.sort((a, b) => a.createdAt.localeCompare(b.createdAt)));
+  const depths = [...byDepth.keys()].sort((a, b) => a - b);
+  const cols = depths.map((d) => byDepth.get(d)!.sort((a, b) => a.createdAt.localeCompare(b.createdAt)));
+  const maxRows = Math.max(1, ...cols.map((c) => c.length));
+
+  const byId = new Map<string, PositionedNode>();
+  const positioned: PositionedNode[] = [];
+  cols.forEach((col, colIdx) => {
+    col.forEach((n, row) => {
+      const x = PAD + colIdx * (DOT + COL_GAP) + DOT / 2;
+      // 该列节点整体竖直居中
+      const colHeight = col.length * DOT + (col.length - 1) * ROW_GAP;
+      const totalHeight = maxRows * DOT + (maxRows - 1) * ROW_GAP;
+      const yTop = PAD + (totalHeight - colHeight) / 2;
+      const y = yTop + row * (DOT + ROW_GAP) + DOT / 2;
+      const p: PositionedNode = { ...n, col: colIdx, row, x, y, ep: colIdx + 1 };
+      positioned.push(p);
+      byId.set(n.id, p);
+    });
+  });
+
+  // 只为真实父子关系连线
+  const edges: [PositionedNode, PositionedNode][] = [];
+  for (const p of positioned) {
+    if (p.parentId && byId.has(p.parentId)) edges.push([byId.get(p.parentId)!, p]);
+  }
+
+  const width = PAD * 2 + cols.length * DOT + (cols.length - 1) * COL_GAP;
+  const height = PAD * 2 + maxRows * DOT + (maxRows - 1) * ROW_GAP;
+  return { positioned, edges, width, height };
 }
 
 function kindLabel(k: RemixKind | null) {
@@ -429,13 +475,8 @@ const styles = StyleSheet.create({
   stepperHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   stepperTitle: { ...typography.captionStrong, color: colors.text },
   stepperHint: { ...typography.tiny, color: colors.textDim, marginLeft: 'auto' },
-  treeTrack: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.sm },
-  dotColumn: { flexDirection: 'row', alignItems: 'center' },
-  dotConnector: { width: 24, height: 2, backgroundColor: colors.border },
-  dotColItems: { gap: spacing.md, justifyContent: 'center' },
-  dotWrap: { alignItems: 'center', justifyContent: 'center' },
   epDot: {
-    width: 40, height: 40, borderRadius: 20,
+    width: DOT, height: DOT, borderRadius: DOT / 2,
     backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.border,
     alignItems: 'center', justifyContent: 'center',
   },
