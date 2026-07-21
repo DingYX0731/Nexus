@@ -290,7 +290,8 @@ export default function VideoDetail() {
                         <Line
                           key={i}
                           x1={from.x} y1={from.y} x2={to.x} y2={to.y}
-                          stroke={colors.border} strokeWidth={2}
+                          stroke="rgba(255,255,255,0.5)" strokeWidth={2.5}
+                          strokeLinecap="round"
                         />
                       ))}
                     </Svg>
