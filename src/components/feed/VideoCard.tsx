@@ -114,6 +114,17 @@ export function VideoCard({ video, isActive }: { video: Video; isActive: boolean
             <Text style={styles.badgeText}>{kindLabel(video.remix_kind)} · 来自原作者</Text>
           </View>
         )}
+        {/* 续写系列：点进详情页看完整步道/分支 */}
+        {chain.length > 1 && (
+          <Pressable
+            style={styles.seriesBtn}
+            hitSlop={6}
+            onPress={() => router.push(`/video/${video.id}` as any)}
+          >
+            <GitBranch color="#fff" size={12} />
+            <Text style={styles.seriesBtnText}>查看系列 · {chain.length} 集</Text>
+          </Pressable>
+        )}
       </View>
       <View pointerEvents="box-none" style={[styles.sideBar, { bottom: tabBarHeight + 30 }]}>
         <SideBtn
@@ -224,6 +235,18 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   badgeText: { color: '#fff', ...typography.tiny },
+  seriesBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    alignSelf: 'flex-start',
+    backgroundColor: colors.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    marginTop: 8,
+  },
+  seriesBtnText: { color: '#fff', ...typography.tiny, fontWeight: '700' },
 
   sideBar: {
     position: 'absolute',

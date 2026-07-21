@@ -3,7 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, GitBranch, Heart, MessageCircle, Share2, Home, Info, Globe, Lock, Trash2 } from 'lucide-react-native';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { getVideo, getContinuationChain, getSeriesTree, toggleLike, setVisibility as daoSetVisibility, deleteVideo as daoDeleteVideo, type RemixKind, type SeriesNode } from '@/api/videos';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { CommentsSheet } from '@/components/comments/CommentsSheet';
@@ -18,11 +18,18 @@ import { LoadingState, ErrorState, EmptyState } from '@/components/ui/ScreenStat
 import { FollowButton } from '@/components/social/FollowButton';
 
 export default function VideoDetail() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id: routeId } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const qc = useQueryClient();
   const { user } = useAuth();
   const [commentsOpen, setCommentsOpen] = useState(false);
+
+  // 当前查看的节点 = selectedId。点步道条切换节点时只改它，页面原地换视频/介绍，不新起页面。
+  // 路由 id 变化（从别处进入新视频）时重置。
+  const [selectedId, setSelectedId] = useState(routeId);
+  useEffect(() => { setSelectedId(routeId); }, [routeId]);
+  const id = selectedId;
+
   const commentList = useComments((s) => s.byVideo[id ?? '']);
   const commentCount = commentList?.length ?? 0;
 
@@ -244,7 +251,8 @@ export default function VideoDetail() {
           />
           <ActionBtn
             icon={<GitBranch color={colors.text} size={22} strokeWidth={1.8} />}
-            label={`续写 ${video.stats?.fork_count ?? 0}`}
+            // 续写数统一为整个系列的续写总数(树里除根外的节点数)，同系列每个视频看到的都一致
+            label={`续写 ${hasSeries ? series.length - 1 : (video.stats?.fork_count ?? 0)}`}
             onPress={() => {
               if (!user) {
                 showAuthRequired('登录后即可续写、Remix ✨', () => router.push('/auth/login'));
@@ -267,36 +275,30 @@ export default function VideoDetail() {
             <View style={styles.stepperHeader}>
               <GitBranch color={colors.accent} size={14} />
               <Text style={styles.stepperTitle}>完整故事 · {series.length} 集</Text>
-              <Text style={styles.stepperHint}>← 可滑动 · 点任意集跳转</Text>
+              <Text style={styles.stepperHint}>← 滑动 · 点圆点切换</Text>
             </View>
-            {/* 横向可滑动树：每一列 = 一层(depth)，同层多个 = 分支，纵向并列 */}
+            {/* 圆点树：每列一层(depth)，圆点只显集数；从左往右用连线展开，点圆点原地切换 */}
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.treeTrack}
             >
               {groupByDepth(series).map((column, colIdx) => (
-                <View key={colIdx} style={styles.treeColumn}>
-                  {colIdx > 0 && <View style={styles.treeColConnector} />}
-                  <View style={styles.treeColItems}>
+                <View key={colIdx} style={styles.dotColumn}>
+                  {colIdx > 0 && <View style={styles.dotConnector} />}
+                  <View style={styles.dotColItems}>
                     {column.map((node) => {
                       const isCurrent = node.id === id;
-                      const label = colIdx === 0 ? '起点' : `第 ${colIdx + 1} 集`;
                       return (
                         <Pressable
                           key={node.id}
-                          style={[styles.treeNode, isCurrent && styles.treeNodeActive]}
-                          onPress={() => { if (!isCurrent) router.replace(`/video/${node.id}` as any); }}
+                          hitSlop={8}
+                          style={styles.dotWrap}
+                          onPress={() => { if (!isCurrent) setSelectedId(node.id); }}
                         >
-                          <View style={styles.treeNodeHead}>
-                            <View style={[styles.stepNum, isCurrent && styles.stepNumActive]}>
-                              <Text style={[styles.stepNumText, isCurrent && styles.stepNumTextActive]}>{colIdx + 1}</Text>
-                            </View>
-                            <Text style={[styles.treeNodeLabel, isCurrent && styles.stepCaptionActive]}>{label}</Text>
+                          <View style={[styles.epDot, isCurrent && styles.epDotActive]}>
+                            <Text style={[styles.dotText, isCurrent && styles.dotTextActive]}>{colIdx + 1}</Text>
                           </View>
-                          <Text style={[styles.stepCaption, isCurrent && styles.stepCaptionActive]} numberOfLines={2}>
-                            {node.prompt?.slice(0, 28) ?? '(无描述)'}
-                          </Text>
                         </Pressable>
                       );
                     })}
@@ -422,33 +424,24 @@ const styles = StyleSheet.create({
   actionBtn: { alignItems: 'center', gap: 6, minWidth: 56 },
   actionLbl: { ...typography.tiny, color: colors.text },
 
-  // 分集步道条（横向可滑动树）：每列一层(depth)，同层多个=分支纵向并列，高亮当前，可跳转
+  // 步道条（圆点树）：每列一层(depth)，圆点只显集数，从左往右连线展开，点圆点原地切换
   stepper: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, gap: spacing.sm },
   stepperHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   stepperTitle: { ...typography.captionStrong, color: colors.text },
   stepperHint: { ...typography.tiny, color: colors.textDim, marginLeft: 'auto' },
-  treeTrack: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: spacing.xs },
-  treeColumn: { flexDirection: 'row', alignItems: 'center' },
-  treeColConnector: { width: 14, height: 2, backgroundColor: colors.border, alignSelf: 'center' },
-  treeColItems: { gap: spacing.sm },
-  treeNode: {
-    width: 132, padding: spacing.sm, gap: 4,
-    backgroundColor: colors.surface, borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border,
-  },
-  treeNodeActive: { borderColor: colors.primary, borderWidth: 1.5, backgroundColor: colors.primarySoft },
-  treeNodeHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  treeNodeLabel: { ...typography.tiny, color: colors.textSecondary, fontWeight: '600' },
-  stepNum: {
-    width: 30, height: 30, borderRadius: 15,
-    backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border,
+  treeTrack: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.sm },
+  dotColumn: { flexDirection: 'row', alignItems: 'center' },
+  dotConnector: { width: 24, height: 2, backgroundColor: colors.border },
+  dotColItems: { gap: spacing.md, justifyContent: 'center' },
+  dotWrap: { alignItems: 'center', justifyContent: 'center' },
+  epDot: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.border,
     alignItems: 'center', justifyContent: 'center',
   },
-  stepNumActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  stepNumText: { ...typography.captionStrong, color: colors.textMuted },
-  stepNumTextActive: { color: '#fff' },
-  stepCaption: { ...typography.tiny, color: colors.textMuted, lineHeight: 14 },
-  stepCaptionActive: { color: colors.text, fontWeight: '600' },
+  epDotActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  dotText: { ...typography.captionStrong, color: colors.textSecondary },
+  dotTextActive: { color: '#fff' },
   stepperRemixBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
     paddingVertical: spacing.sm, marginTop: spacing.xs,
