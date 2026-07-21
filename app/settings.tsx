@@ -162,14 +162,14 @@ export default function SettingsScreen() {
             icon={<Sparkles color={colors.accent} size={18} />}
             label={t('ai.provider')}
             value={providerLabel}
-            onPress={() => router.push('/settings/ai-provider' as any)}
+            onPress={() => router.push('/settings-ai-provider' as any)}
             chevron
           />
           <Row
             icon={<Languages color={colors.text} size={18} />}
             label={t('settings.language')}
             value={langLabel}
-            onPress={() => router.push('/settings/language' as any)}
+            onPress={() => router.push('/settings-language' as any)}
             chevron
           />
         </Section>

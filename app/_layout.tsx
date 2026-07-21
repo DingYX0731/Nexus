@@ -58,8 +58,8 @@ export default function RootLayout() {
             <Stack.Screen name="remix/[id]" options={{ presentation: 'modal' }} />
             <Stack.Screen name="auth/login" options={{ presentation: 'modal' }} />
             <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
-            <Stack.Screen name="settings/ai-provider" options={{ presentation: 'card' }} />
-            <Stack.Screen name="settings/language" options={{ presentation: 'card' }} />
+            <Stack.Screen name="settings-ai-provider" options={{ presentation: 'card' }} />
+            <Stack.Screen name="settings-language" options={{ presentation: 'card' }} />
             <Stack.Screen name="profile/edit" options={{ presentation: 'modal' }} />
             <Stack.Screen name="user/[id]" options={{ presentation: 'card' }} />
             <Stack.Screen name="list/liked" options={{ presentation: 'card' }} />
