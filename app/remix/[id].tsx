@@ -14,10 +14,12 @@ import { hasSupabase } from '@/api/client';
 import { showDialog } from '@/components/dialog/ConfirmDialog';
 import { showToast } from '@/components/toast/Toast';
 import { grantCreditsRemote } from '@/api/supabase/creditsRepo';
+import { useT } from '@/i18n';
 
 type Mode = 'continuation' | 'prompt_remix';
 
 export default function RemixScreen() {
+  const t = useT();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user, isAnonymous, requireAuth } = useAuth();
@@ -58,10 +60,10 @@ export default function RemixScreen() {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.wall}>
-          <Text style={styles.title}>登录后才能在他人作品上创作</Text>
-          <Text style={styles.sub}>续写 / Remix 是 AI Shorts 的核心玩法,登录后获得 5 个免费额度。</Text>
+          <Text style={styles.title}>{t('remix.wallTitle')}</Text>
+          <Text style={styles.sub}>{t('remix.wallSub')}</Text>
           <Pressable style={styles.button} onPress={() => { router.dismiss(); requireAuth(router); }}>
-            <Text style={styles.buttonText}>去登录</Text>
+            <Text style={styles.buttonText}>{t('remix.goLogin')}</Text>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -71,37 +73,37 @@ export default function RemixScreen() {
   const onSubmit = async () => {
     if (!prompt.trim() || !source) return;
     if (!keyConfigured) {
-      Alert.alert('需要 API Key', '请先在设置中填写你自己的 API Key 才能生成。', [
-        { text: '取消', style: 'cancel' },
-        { text: '去设置', onPress: () => router.push('/settings' as any) },
+      Alert.alert(t('create.needKeyTitle'), t('create.needKeyMsg'), [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('create.toSettings'), onPress: () => router.push('/settings' as any) },
       ]);
       return;
     }
     if (credits < COST_GENERATION) {
       if (hasSupabase) {
         showDialog({
-          title: '额度不足',
-          message: '你的生成额度已耗尽。可以领取 5 个体验额度继续创作。',
-          primaryLabel: '领取体验额度',
-          secondaryLabel: '知道了',
+          title: t('create.creditsLow'),
+          message: t('create.creditsExhausted'),
+          primaryLabel: t('create.claimCredits'),
+          secondaryLabel: t('common.ok'),
           icon: 'sparkles',
           onPrimary: async () => {
             try {
               await grantCreditsRemote(5);
               await syncRemote(user!.id);
-              showToast({ message: '已领取 5 额度,快去创作吧!' });
+              showToast({ message: t('create.claimed') });
             } catch (e: any) {
-              showToast({ message: `领取失败:${e?.message ?? '请稍后重试'}`, durationMs: 4000 });
+              showToast({ message: t('credits.claimFailed', { msg: e?.message ?? t('common.tryLater') }), durationMs: 4000 });
             }
           },
         });
       } else {
-        Alert.alert('额度不足', '邀请好友可获取更多额度(敬请期待)');
+        Alert.alert(t('create.creditsLow'), t('remix.creditsLowLocal'));
       }
       return;
     }
     if (!charge(user.id)) {
-      Alert.alert('额度不足');
+      Alert.alert(t('create.creditsLow'));
       return;
     }
     try {
@@ -114,14 +116,14 @@ export default function RemixScreen() {
       router.dismissTo('/(tabs)/create');
     } catch (e: any) {
       refund(user.id);
-      Alert.alert('提交失败', e?.message ?? String(e));
+      Alert.alert(t('create.submitFailed'), e?.message ?? String(e));
     }
   };
 
   if (!source) {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
-        <Text style={styles.loading}>加载源视频...</Text>
+        <Text style={styles.loading}>{t('remix.loadingSource')}</Text>
       </SafeAreaView>
     );
   }
@@ -132,7 +134,7 @@ export default function RemixScreen() {
         <Pressable hitSlop={12} onPress={() => router.back()}>
           <X color={colors.text} size={24} />
         </Pressable>
-        <Text style={styles.headerTitle}>基于这条视频创作</Text>
+        <Text style={styles.headerTitle}>{t('remix.headerTitle')}</Text>
         <View style={styles.creditsChip}>
           <Coins color={colors.warning} size={12} />
           <Text style={styles.creditsText}>{credits}</Text>
@@ -155,15 +157,15 @@ export default function RemixScreen() {
         <ModeButton
           active={mode === 'continuation'}
           icon={<GitBranch color={mode === 'continuation' ? colors.primary : colors.textMuted} size={18} />}
-          label="尾帧续写"
-          desc="以原视频最后一帧为起点"
+          label={t('remix.modeContinuation')}
+          desc={t('remix.modeContinuationDesc')}
           onPress={() => setMode('continuation')}
         />
         <ModeButton
           active={mode === 'prompt_remix'}
           icon={<RotateCw color={mode === 'prompt_remix' ? colors.primary : colors.textMuted} size={18} />}
-          label="Prompt Remix"
-          desc="改写 prompt 重新生成"
+          label={t('remix.modeRemix')}
+          desc={t('remix.modeRemixDesc')}
           onPress={() => setMode('prompt_remix')}
         />
       </View>
@@ -172,7 +174,7 @@ export default function RemixScreen() {
         style={styles.input}
         value={prompt}
         onChangeText={setPrompt}
-        placeholder={mode === 'continuation' ? '接下来发生了什么?例:猫漂离土星,加速进入虫洞' : '改写主题、风格、角色,例:把橘猫换成熊猫,赛博朋克风'}
+        placeholder={mode === 'continuation' ? t('remix.placeholderContinuation') : t('remix.placeholderRemix')}
         placeholderTextColor={colors.textDim}
         multiline
         maxLength={500}
@@ -183,10 +185,10 @@ export default function RemixScreen() {
         disabled={credits < COST_GENERATION}
         onPress={onSubmit}
       >
-        <Text style={styles.buttonText}>提交生成 (消耗 {COST_GENERATION})</Text>
+        <Text style={styles.buttonText}>{t('remix.submit', { n: COST_GENERATION })}</Text>
       </Pressable>
 
-      <Text style={styles.note}>提交后可关闭此页,生成在后台进行,可在"创作 → 我的任务"查看进度。</Text>
+      <Text style={styles.note}>{t('remix.note')}</Text>
     </SafeAreaView>
   );
 }

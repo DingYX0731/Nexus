@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { View, Text, ActivityIndicator, Pressable, StyleSheet } from 'react-native';
 import { AlertCircle } from 'lucide-react-native';
 import { colors, radius, spacing, typography } from '@/theme';
+import { useT } from '@/i18n';
 
 export function LoadingState({ text }: { text?: string }) {
   return (
@@ -13,14 +14,15 @@ export function LoadingState({ text }: { text?: string }) {
 }
 
 export function ErrorState({ message, onRetry }: { message?: string; onRetry?: () => void }) {
+  const t = useT();
   return (
     <View style={styles.center}>
       <AlertCircle color={colors.danger} size={32} />
-      <Text style={styles.title}>出错了</Text>
-      <Text style={styles.sub}>{message ?? '加载失败，请重试'}</Text>
+      <Text style={styles.title}>{t('state.error')}</Text>
+      <Text style={styles.sub}>{message ?? t('state.loadFailed')}</Text>
       {onRetry ? (
         <Pressable style={styles.btn} onPress={onRetry}>
-          <Text style={styles.btnText}>重试</Text>
+          <Text style={styles.btnText}>{t('common.retry')}</Text>
         </Pressable>
       ) : null}
     </View>

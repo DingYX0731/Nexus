@@ -19,8 +19,10 @@ import { getProfile, updateProfile, uploadAvatar, UsernameTakenError } from '@/a
 import { validateUsername, validateBio } from '@/api/auth/validateUsername';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { showToast } from '@/components/toast/Toast';
+import { useT } from '@/i18n';
 
 export default function EditProfileScreen() {
+  const t = useT();
   const router = useRouter();
   const qc = useQueryClient();
   const authUser = useAuth((s) => s.user);
@@ -81,7 +83,7 @@ export default function EditProfileScreen() {
         try {
           newAvatarUrl = await uploadAvatar(avatarLocalUri);
         } catch {
-          showToast({ message: '头像上传失败，其它信息已保存' });
+          showToast({ message: t('edit.avatarUploadFailed') });
         }
       }
       await updateProfile({ username: username.trim(), bio: bio.trim(), avatarUrl: newAvatarUrl });
@@ -93,13 +95,13 @@ export default function EditProfileScreen() {
       });
       qc.invalidateQueries({ queryKey: ['profile', uid] });
       qc.invalidateQueries({ queryKey: ['myVideos', uid] });
-      showToast({ message: '已保存' });
+      showToast({ message: t('common.saved') });
       router.back();
     } catch (e: unknown) {
       if (e instanceof UsernameTakenError) {
-        setErr('用户名已被占用');
+        setErr(t('edit.usernameTaken'));
       } else {
-        const msg = e instanceof Error ? e.message : '保存失败';
+        const msg = e instanceof Error ? e.message : t('common.saveFailed');
         setErr(msg);
       }
     } finally {
@@ -130,7 +132,7 @@ export default function EditProfileScreen() {
         <Pressable hitSlop={12} onPress={() => router.back()} disabled={saving}>
           <X color={saving ? colors.textDim : colors.text} size={24} />
         </Pressable>
-        <Text style={styles.headerTitle}>编辑资料</Text>
+        <Text style={styles.headerTitle}>{t('edit.title')}</Text>
         <Pressable
           hitSlop={12}
           onPress={onSave}
@@ -139,7 +141,7 @@ export default function EditProfileScreen() {
         >
           {saving
             ? <ActivityIndicator size="small" color={colors.text} />
-            : <Text style={styles.saveBtnText}>保存</Text>}
+            : <Text style={styles.saveBtnText}>{t('common.save')}</Text>}
         </Pressable>
       </View>
 
@@ -152,13 +154,13 @@ export default function EditProfileScreen() {
         <View style={styles.avatarSection}>
           <UserAvatar user={previewAvatarUser} size={88} />
           <Pressable style={styles.changeAvatarBtn} onPress={pickAvatar} disabled={saving}>
-            <Text style={styles.changeAvatarText}>更换头像</Text>
+            <Text style={styles.changeAvatarText}>{t('edit.changeAvatar')}</Text>
           </Pressable>
         </View>
 
         {/* Username */}
         <View style={styles.fieldGroup}>
-          <Text style={styles.fieldLabel}>用户名</Text>
+          <Text style={styles.fieldLabel}>{t('edit.username')}</Text>
           <TextInput
             style={[
               styles.input,
@@ -166,7 +168,7 @@ export default function EditProfileScreen() {
             ]}
             value={username}
             onChangeText={(v) => { setUsername(v); setErr(''); }}
-            placeholder="输入用户名"
+            placeholder={t('edit.usernamePlaceholder')}
             placeholderTextColor={colors.textDim}
             autoCapitalize="none"
             autoCorrect={false}
@@ -181,7 +183,7 @@ export default function EditProfileScreen() {
         {/* Bio */}
         <View style={styles.fieldGroup}>
           <View style={styles.fieldLabelRow}>
-            <Text style={styles.fieldLabel}>简介</Text>
+            <Text style={styles.fieldLabel}>{t('edit.bio')}</Text>
             <Text style={styles.bioCount}>{bio.length}/80</Text>
           </View>
           <TextInput
@@ -192,7 +194,7 @@ export default function EditProfileScreen() {
             ]}
             value={bio}
             onChangeText={(v) => { setBio(v); setErr(''); }}
-            placeholder="介绍一下自己吧（最多 80 字）"
+            placeholder={t('edit.bioPlaceholder')}
             placeholderTextColor={colors.textDim}
             multiline
             numberOfLines={3}

@@ -16,9 +16,11 @@ import { useComments } from '@/store/comments';
 import { useTabBarSpace } from '@/hooks/useTabBarSpace';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { colors, spacing, typography } from '@/theme';
+import { useT, t as translate } from '@/i18n';
 
 export function VideoCard({ video, isActive }: { video: Video; isActive: boolean }) {
   const router = useRouter();
+  const t = useT();
   const { tabBarHeight } = useTabBarSpace();
   const { user } = useAuth();
   const ensureSeeded = useComments((s) => s.ensureSeeded);
@@ -59,7 +61,7 @@ export function VideoCard({ video, isActive }: { video: Video; isActive: boolean
 
   const onLike = () => {
     if (!user) {
-      showAuthRequired('登录后即可点赞,留下你的足迹 ❤️', () => router.push('/auth/login'));
+      showAuthRequired(t('card.likePrompt'), () => router.push('/auth/login'));
       return;
     }
     // 保留点赞动画（乐观）
@@ -73,7 +75,7 @@ export function VideoCard({ video, isActive }: { video: Video; isActive: boolean
   };
   const onRemix = () => {
     if (!user) {
-      showAuthRequired('登录后即可在他人作品上续写、Remix ✨', () => router.push('/auth/login'));
+      showAuthRequired(t('card.remixPrompt'), () => router.push('/auth/login'));
       return;
     }
     router.push(`/remix/${video.id}`);
@@ -81,7 +83,7 @@ export function VideoCard({ video, isActive }: { video: Video; isActive: boolean
   const onShare = async () => {
     try {
       await Share.share({
-        message: `在 AI Shorts 看到一条不错的视频:${video.prompt}`,
+        message: t('card.shareMsg', { prompt: video.prompt ?? '' }),
       });
     } catch {
       // 用户取消分享,忽略
@@ -111,7 +113,7 @@ export function VideoCard({ video, isActive }: { video: Video; isActive: boolean
         {video.remix_kind && (
           <View style={styles.badge}>
             <GitBranch color="#fff" size={11} />
-            <Text style={styles.badgeText}>{kindLabel(video.remix_kind)} · 来自原作者</Text>
+            <Text style={styles.badgeText}>{t('card.fromAuthor', { kind: t(kindLabelKey(video.remix_kind)) })}</Text>
           </View>
         )}
         {/* 续写系列：点进详情页看完整步道/分支 */}
@@ -122,7 +124,7 @@ export function VideoCard({ video, isActive }: { video: Video; isActive: boolean
             onPress={() => router.push(`/video/${video.id}` as any)}
           >
             <GitBranch color="#fff" size={12} />
-            <Text style={styles.seriesBtnText}>查看系列 · {chain.length} 集</Text>
+            <Text style={styles.seriesBtnText}>{t('card.viewSeries', { n: chain.length })}</Text>
           </Pressable>
         )}
       </View>
@@ -138,7 +140,7 @@ export function VideoCard({ video, isActive }: { video: Video; isActive: boolean
         />
         <SideBtn onPress={() => setCommentsOpen(true)} icon={<MessageCircle size={30} color="#fff" strokeWidth={1.8} />} label={fmt(finalCommentCount)} />
         <SideBtn onPress={onRemix} icon={<GitBranch size={28} color="#fff" strokeWidth={1.8} />} label={fmt(video.stats?.fork_count)} />
-        <SideBtn onPress={onShare} icon={<Share2 size={26} color="#fff" strokeWidth={1.8} />} label="分享" />
+        <SideBtn onPress={onShare} icon={<Share2 size={26} color="#fff" strokeWidth={1.8} />} label={t('card.share')} />
       </View>
     </View>
   );
@@ -184,16 +186,17 @@ function SideBtn({ icon, label, onPress }: { icon: React.ReactNode; label: strin
   );
 }
 
-function kindLabel(k: NonNullable<Video['remix_kind']>) {
+function kindLabelKey(k: NonNullable<Video['remix_kind']>): 'card.kindContinuation' | 'card.kindRemix' {
   // 旧数据可能存在 remix_kind='edit'（剪辑已下线），兜底显示为 Remix，避免空白
-  return k === 'continuation' ? '续写' : 'Remix';
+  return k === 'continuation' ? 'card.kindContinuation' : 'card.kindRemix';
 }
 
 function fmt(n: number | undefined) {
   if (!n) return '0';
   if (n < 1000) return String(n);
   if (n < 10_000) return (n / 1000).toFixed(1) + 'k';
-  return (n / 10_000).toFixed(1) + '万';
+  const unit = translate('unit.tenThousand');
+  return unit === '万' ? (n / 10_000).toFixed(1) + '万' : (n / 1000).toFixed(1) + 'k';
 }
 
 const styles = StyleSheet.create({

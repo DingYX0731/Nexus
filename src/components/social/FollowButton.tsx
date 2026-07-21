@@ -4,8 +4,10 @@ import { followUser, unfollowUser, isFollowing } from '@/api/supabase/followsRep
 import { hasSupabase } from '@/api/client';
 import { useAuth } from '@/store/auth';
 import { colors, radius, spacing, typography } from '@/theme';
+import { useT } from '@/i18n';
 
 export function FollowButton({ targetUserId }: { targetUserId: string }) {
+  const t = useT();
   const qc = useQueryClient();
   const { user } = useAuth();
   // 自己不显示关注自己；未配 Supabase 不显示
@@ -36,7 +38,7 @@ export function FollowButton({ targetUserId }: { targetUserId: string }) {
       disabled={mut.isPending}
     >
       <Text style={[styles.text, following && styles.textFollowing]}>
-        {following ? '已关注' : '关注'}
+        {following ? t('follow.following') : t('follow.follow')}
       </Text>
     </Pressable>
   );

@@ -18,8 +18,10 @@ import { useVideoThumbnail } from '@/hooks/useVideoThumbnail';
 import type { Video } from '@/api/types';
 import { LoadingState, ErrorState, EmptyState } from '@/components/ui/ScreenState';
 import { UserAvatar } from '@/components/ui/UserAvatar';
+import { useT, t as translate } from '@/i18n';
 
 export default function ProfileScreen() {
+  const t = useT();
   const router = useRouter();
   const { user, isAnonymous } = useAuth();
   const { contentBottomPad } = useTabBarSpace();
@@ -105,7 +107,7 @@ export default function ProfileScreen() {
   );
 
   if (isLoading) {
-    return <LoadingState text="加载中…" />;
+    return <LoadingState text={t('common.loading')} />;
   }
 
   if (isError) {
@@ -115,11 +117,11 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.topBar}>
-        <Text style={styles.headerTitle}>个人主页</Text>
+        <Text style={styles.headerTitle}>{t('profile.title')}</Text>
         <View style={styles.topRight}>
           <Pressable hitSlop={8} onPress={() => {
-            const name = isAnonymous ? '我' : `@${user?.username}`;
-            Share.share({ message: `来看看 ${name} 在 AI Shorts 的作品` }).catch(() => undefined);
+            const name = isAnonymous ? t('profile.shareMe') : `@${user?.username}`;
+            Share.share({ message: t('profile.shareMsg', { name }) }).catch(() => undefined);
           }}>
             <Share2 color={colors.text} size={20} />
           </Pressable>
@@ -139,35 +141,35 @@ export default function ProfileScreen() {
           <View>
             <View style={styles.header}>
               <UserAvatar user={{ username: user?.username, avatar_url: profile?.avatar_url ?? null }} size={80} />
-              <Text style={styles.name}>{isAnonymous ? '匿名访客' : `@${user?.username ?? 'me'}`}</Text>
+              <Text style={styles.name}>{isAnonymous ? t('settings.anonymous') : `@${user?.username ?? 'me'}`}</Text>
               {profile?.bio ? (
                 <Text style={styles.bio}>{profile.bio}</Text>
               ) : (
-                <Text style={styles.bio}>{isAnonymous ? '登录后即可发布与收获' : '用 AI 讲你的故事'}</Text>
+                <Text style={styles.bio}>{isAnonymous ? t('profile.bioGuest') : t('profile.bioDefault')}</Text>
               )}
 
               <View style={styles.statsRow}>
-                <View style={styles.statFlex}><Stat label="播放" value={totals.plays} /></View>
+                <View style={styles.statFlex}><Stat label={t('stat.plays')} value={totals.plays} /></View>
                 <View style={styles.statFlex}>
                   <Pressable onPress={() => router.push('/list/forked' as any)}>
-                    <Stat label="被续写" value={totals.forks} highlight />
+                    <Stat label={t('stat.forked')} value={totals.forks} highlight />
                   </Pressable>
                 </View>
                 <View style={styles.statFlex}>
                   <Pressable onPress={() => router.push('/list/following' as any)}>
-                    <Stat label="关注" value={followCounts.following} />
+                    <Stat label={t('stat.following')} value={followCounts.following} />
                   </Pressable>
                 </View>
                 <View style={styles.statFlex}>
                   <Pressable onPress={() => router.push('/list/followers' as any)}>
-                    <Stat label="粉丝" value={followCounts.followers} />
+                    <Stat label={t('stat.followers')} value={followCounts.followers} />
                   </Pressable>
                 </View>
               </View>
 
               {isAnonymous ? (
                 <Pressable style={styles.loginBtn} onPress={() => router.push('/auth/login')}>
-                  <Text style={styles.loginTxt}>登录 / 注册</Text>
+                  <Text style={styles.loginTxt}>{t('login.title')}</Text>
                 </Pressable>
               ) : null}
             </View>
@@ -176,13 +178,13 @@ export default function ProfileScreen() {
             <View style={styles.tabsRow}>
               <Pressable style={[styles.tabsItem, activeTab === 'works' && styles.tabsItemActive]} onPress={() => setActiveTab('works')}>
                 <Text style={[styles.tabsText, activeTab === 'works' && styles.tabsTextActive]}>
-                  作品 · {videos.length}
+                  {t('profile.tabWorks', { n: videos.length })}
                   {activeTab === 'works' && videos.some((v) => v.visibility === 'private')
-                    ? ` (${videos.filter((v) => v.visibility === 'private').length} 草稿)` : ''}
+                    ? t('profile.draftSuffix', { n: videos.filter((v) => v.visibility === 'private').length }) : ''}
                 </Text>
               </Pressable>
               <Pressable style={[styles.tabsItem, activeTab === 'liked' && styles.tabsItemActive]} onPress={() => setActiveTab('liked')}>
-                <Text style={[styles.tabsText, activeTab === 'liked' && styles.tabsTextActive]}>点赞</Text>
+                <Text style={[styles.tabsText, activeTab === 'liked' && styles.tabsTextActive]}>{t('profile.tabLiked')}</Text>
               </Pressable>
             </View>
           </View>
@@ -195,14 +197,14 @@ export default function ProfileScreen() {
         ListEmptyComponent={
           activeTab === 'works' ? (
             <EmptyState
-              title="还没有作品"
-              subtitle="去 创作 页生成第一条 AI 短视频"
-              cta={{ label: '开始创作', onPress: () => router.push('/(tabs)/create') }}
+              title={t('profile.worksEmptyTitle')}
+              subtitle={t('profile.worksEmptySub')}
+              cta={{ label: t('profile.worksEmptyCta'), onPress: () => router.push('/(tabs)/create') }}
             />
           ) : (
             <EmptyState
-              title="还没有点赞"
-              subtitle="去 Feed 发现喜欢的视频，点赞收藏"
+              title={t('profile.likedEmptyTitle')}
+              subtitle={t('profile.likedEmptySub')}
             />
           )
         }
@@ -221,17 +223,19 @@ function Stat({ label, value, highlight }: { label: string; value: number; highl
 }
 
 function GeneratingThumb({ video }: { video: Video }) {
+  const t = useT();
   return (
     <View style={[styles.thumb, styles.generatingThumb]} pointerEvents="none">
       <ActivityIndicator size="small" color={colors.primary} />
       <Text style={styles.generatingText} numberOfLines={2}>
-        {video.prompt ?? '生成中…'}
+        {video.prompt ?? t('profile.generating')}
       </Text>
     </View>
   );
 }
 
 function Thumb({ video, onPress }: { video: Video; onPress: () => void }) {
+  const t = useT();
   const thumb = useVideoThumbnail(
     !video.thumbnail_url ? video.video_url : undefined,
     video.thumbnail_url ?? null,
@@ -246,7 +250,7 @@ function Thumb({ video, onPress }: { video: Video; onPress: () => void }) {
       {video.visibility === 'private' && (
         <View style={styles.thumbDraftBadge}>
           <Lock size={10} color="#fff" />
-          <Text style={styles.thumbDraftText}>草稿</Text>
+          <Text style={styles.thumbDraftText}>{t('state.draft')}</Text>
         </View>
       )}
     </Pressable>
@@ -256,7 +260,9 @@ function Thumb({ video, onPress }: { video: Video; onPress: () => void }) {
 function formatCount(n: number) {
   if (n < 1000) return String(n);
   if (n < 10_000) return (n / 1000).toFixed(1) + 'k';
-  return (n / 10_000).toFixed(1) + '万';
+  // 中文用「万」，英文继续用 k
+  const unit = translate('unit.tenThousand');
+  return unit === '万' ? (n / 10_000).toFixed(1) + '万' : (n / 1000).toFixed(1) + 'k';
 }
 
 const styles = StyleSheet.create({

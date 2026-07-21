@@ -9,8 +9,10 @@ import { hasSupabase } from '@/api/client';
 import { listFollowing, type UserSummary } from '@/api/supabase/followsRepo';
 import { LoadingState, ErrorState, EmptyState } from '@/components/ui/ScreenState';
 import { UserAvatar } from '@/components/ui/UserAvatar';
+import { useT } from '@/i18n';
 
 export default function FollowingScreen() {
+  const t = useT();
   const router = useRouter();
   const { user, isAnonymous } = useAuth();
 
@@ -20,7 +22,7 @@ export default function FollowingScreen() {
     enabled: hasSupabase && !!user && !isAnonymous,
   });
 
-  if (isLoading) return <LoadingState text="加载中…" />;
+  if (isLoading) return <LoadingState text={t('common.loading')} />;
   if (isError) return <ErrorState onRetry={refetch} />;
 
   return (
@@ -29,7 +31,7 @@ export default function FollowingScreen() {
         <Pressable hitSlop={12} onPress={() => router.back()}>
           <ChevronLeft color={colors.text} size={24} />
         </Pressable>
-        <Text style={styles.headerTitle}>我关注的</Text>
+        <Text style={styles.headerTitle}>{t('list.following')}</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -39,7 +41,7 @@ export default function FollowingScreen() {
         contentContainerStyle={styles.list}
         renderItem={({ item }) => <UserRow user={item} onPress={() => router.push(`/user/${item.id}` as any)} />}
         ListEmptyComponent={
-          <EmptyState title="还没有关注任何人" subtitle="去探索 Feed 发现有趣的创作者" />
+          <EmptyState title={t('list.followingEmptyTitle')} subtitle={t('list.followingEmptySub')} />
         }
       />
     </SafeAreaView>

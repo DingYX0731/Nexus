@@ -12,8 +12,10 @@ import type { Video } from '@/api/types';
 import { LoadingState, ErrorState, EmptyState } from '@/components/ui/ScreenState';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { FollowButton } from '@/components/social/FollowButton';
+import { useT } from '@/i18n';
 
 export default function UserProfileScreen() {
+  const t = useT();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
 
@@ -48,7 +50,7 @@ export default function UserProfileScreen() {
   const isError = profileError || videosError;
 
   if (isLoading) {
-    return <LoadingState text="加载中…" />;
+    return <LoadingState text={t('common.loading')} />;
   }
 
   if (isError) {
@@ -61,7 +63,7 @@ export default function UserProfileScreen() {
         <Pressable hitSlop={12} onPress={() => router.back()}>
           <ChevronLeft color={colors.text} size={24} />
         </Pressable>
-        <Text style={styles.headerTitle}>{profile?.username ? `@${profile.username}` : '用户主页'}</Text>
+        <Text style={styles.headerTitle}>{profile?.username ? `@${profile.username}` : t('userProfile.title')}</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -85,15 +87,15 @@ export default function UserProfileScreen() {
             <View style={styles.statsRow}>
               <View style={styles.statFlex}>
                 <Text style={styles.statVal}>{followCounts.following}</Text>
-                <Text style={styles.statLbl}>关注</Text>
+                <Text style={styles.statLbl}>{t('stat.following')}</Text>
               </View>
               <View style={styles.statFlex}>
                 <Text style={styles.statVal}>{followCounts.followers}</Text>
-                <Text style={styles.statLbl}>粉丝</Text>
+                <Text style={styles.statLbl}>{t('stat.followers')}</Text>
               </View>
               <View style={styles.statFlex}>
                 <Text style={styles.statVal}>{videos.length}</Text>
-                <Text style={styles.statLbl}>作品</Text>
+                <Text style={styles.statLbl}>{t('stat.works')}</Text>
               </View>
             </View>
 
@@ -105,8 +107,8 @@ export default function UserProfileScreen() {
         )}
         ListEmptyComponent={
           <EmptyState
-            title="暂无公开作品"
-            subtitle="该用户还没有发布公开视频"
+            title={t('userProfile.emptyTitle')}
+            subtitle={t('userProfile.emptySub')}
           />
         }
       />
@@ -115,6 +117,7 @@ export default function UserProfileScreen() {
 }
 
 function Thumb({ video, onPress }: { video: Video; onPress: () => void }) {
+  const t = useT();
   const thumb = useVideoThumbnail(
     !video.thumbnail_url ? video.video_url : undefined,
     video.thumbnail_url ?? null,
@@ -129,7 +132,7 @@ function Thumb({ video, onPress }: { video: Video; onPress: () => void }) {
       {video.visibility === 'private' && (
         <View style={styles.thumbDraftBadge}>
           <Lock size={10} color="#fff" />
-          <Text style={styles.thumbDraftText}>草稿</Text>
+          <Text style={styles.thumbDraftText}>{t('state.draft')}</Text>
         </View>
       )}
     </Pressable>

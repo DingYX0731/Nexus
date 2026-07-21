@@ -9,6 +9,7 @@
 import { useEffect } from 'react';
 import { View, Text, Pressable, StyleSheet, Modal, Dimensions } from 'react-native';
 import { create } from 'zustand';
+import { t as translate } from '@/i18n';
 import Animated, {
   useAnimatedStyle, useSharedValue, withTiming, withSpring, runOnJS,
 } from 'react-native-reanimated';
@@ -52,10 +53,10 @@ export function hideDialog() {
 /** 快捷方式:登录引导对话框 */
 export function showAuthRequired(message: string, onGoLogin: () => void) {
   showDialog({
-    title: '登录后继续',
+    title: translate('dialog.loginTitle'),
     message,
-    primaryLabel: '去登录 / 注册',
-    secondaryLabel: '稍后再说',
+    primaryLabel: translate('dialog.loginPrimary'),
+    secondaryLabel: translate('dialog.loginSecondary'),
     onPrimary: onGoLogin,
     icon: 'sparkles',
   });

@@ -9,8 +9,10 @@ import { listForkedVideos } from '@/api/videos';
 import { useVideoThumbnail } from '@/hooks/useVideoThumbnail';
 import type { Video } from '@/api/types';
 import { LoadingState, ErrorState, EmptyState } from '@/components/ui/ScreenState';
+import { useT } from '@/i18n';
 
 export default function ForkedScreen() {
+  const t = useT();
   const router = useRouter();
   const { user } = useAuth();
 
@@ -20,7 +22,7 @@ export default function ForkedScreen() {
     enabled: !!user,
   });
 
-  if (isLoading) return <LoadingState text="加载中…" />;
+  if (isLoading) return <LoadingState text={t('common.loading')} />;
   if (isError) return <ErrorState onRetry={refetch} />;
 
   return (
@@ -29,7 +31,7 @@ export default function ForkedScreen() {
         <Pressable hitSlop={12} onPress={() => router.back()}>
           <ChevronLeft color={colors.text} size={24} />
         </Pressable>
-        <Text style={styles.headerTitle}>被续写的作品</Text>
+        <Text style={styles.headerTitle}>{t('list.forked')}</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -43,7 +45,7 @@ export default function ForkedScreen() {
           <Thumb video={item} onPress={() => router.push(`/video/${item.id}` as any)} />
         )}
         ListEmptyComponent={
-          <EmptyState title="还没有人续写你的视频" subtitle="发布更多作品，吸引他人来续写" />
+          <EmptyState title={t('list.forkedEmptyTitle')} subtitle={t('list.forkedEmptySub')} />
         }
       />
     </SafeAreaView>

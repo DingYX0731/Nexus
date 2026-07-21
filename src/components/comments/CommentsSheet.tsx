@@ -19,6 +19,7 @@ import { useAuth } from '@/store/auth';
 import { showAuthRequired, showDialog } from '@/components/dialog/ConfirmDialog';
 import { useRouter } from 'expo-router';
 import { UserAvatar } from '@/components/ui/UserAvatar';
+import { useT, t as translate } from '@/i18n';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const SHEET_HEIGHT = SCREEN_H * 0.78;
@@ -46,6 +47,7 @@ interface Props {
 }
 
 export function CommentsSheet({ videoId, visible, onClose }: Props) {
+  const t = useT();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const ensureSeeded = useComments((s) => s.ensureSeeded);
@@ -178,7 +180,7 @@ export function CommentsSheet({ videoId, visible, onClose }: Props) {
 
   const handleReply = (comment: Comment) => {
     if (!user) {
-      requireLogin('登录后即可回复评论,加入讨论 ✨');
+      requireLogin(t('comment.loginReply'));
       return;
     }
     // Keep the actual clicked comment so we can display the right @name.
@@ -194,7 +196,7 @@ export function CommentsSheet({ videoId, visible, onClose }: Props) {
   const handleInputFocusGate = () => {
     if (!user) {
       inputRef.current?.blur();
-      requireLogin('登录后即可发表评论,和大家互动 💬');
+      requireLogin(t('comment.loginComment'));
     } else {
       if (emojiOpen) setEmojiOpen(false);
     }
@@ -204,7 +206,7 @@ export function CommentsSheet({ videoId, visible, onClose }: Props) {
     const text = draft.trim();
     if (!text) return;
     if (!user) {
-      requireLogin('登录后即可发表评论 💬');
+      requireLogin(t('comment.loginCommentShort'));
       return;
     }
     // parentId归一到根（两层楼结构）
@@ -223,7 +225,7 @@ export function CommentsSheet({ videoId, visible, onClose }: Props) {
 
   const toggleEmoji = () => {
     if (!user) {
-      requireLogin('登录后即可使用表情 ✨');
+      requireLogin(t('comment.loginEmoji'));
       return;
     }
     if (emojiOpen) {
@@ -246,7 +248,7 @@ export function CommentsSheet({ videoId, visible, onClose }: Props) {
 
   const onLikeComment = (commentId: string) => {
     if (!user) {
-      requireLogin('登录后即可点赞评论 ❤️');
+      requireLogin(t('comment.loginLike'));
       return;
     }
     toggleLike(videoId, commentId);
@@ -255,12 +257,12 @@ export function CommentsSheet({ videoId, visible, onClose }: Props) {
   const handleDelete = (comment: Comment) => {
     const isRoot = !comment.parentId;
     showDialog({
-      title: '删除评论',
+      title: t('comment.deleteTitle'),
       message: isRoot && comment.replyCount > 0
-        ? '删除这条评论会一并删除它下面的回复,此操作无法撤销。'
-        : '确定删除这条评论吗?此操作无法撤销。',
-      primaryLabel: '删除',
-      secondaryLabel: '取消',
+        ? t('comment.deleteMsgWithReplies')
+        : t('comment.deleteMsg'),
+      primaryLabel: t('common.delete'),
+      secondaryLabel: t('common.cancel'),
       onPrimary: () => removeComment(videoId, comment.id),
     });
   };
@@ -278,10 +280,10 @@ export function CommentsSheet({ videoId, visible, onClose }: Props) {
   );
 
   const placeholder = !user
-    ? '登录后即可参与评论…'
+    ? t('comment.placeholderGuest')
     : replyTo
-    ? `回复 @${replyTo.authorName}…`
-    : '有话要说,快来评论';
+    ? t('comment.placeholderReply', { name: replyTo.authorName })
+    : t('comment.placeholderDefault');
 
   // ===== 关键布局逻辑 =====
   //
@@ -313,7 +315,7 @@ export function CommentsSheet({ videoId, visible, onClose }: Props) {
             <View style={styles.handleWrap}>
               <View style={styles.handle} />
               <View style={styles.headerRow}>
-                <Text style={styles.headerTitle}>{ordered.length} 条评论</Text>
+                <Text style={styles.headerTitle}>{t('comment.count', { n: ordered.length })}</Text>
                 <Pressable hitSlop={12} onPress={close}>
                   <X color={colors.textMuted} size={22} />
                 </Pressable>
@@ -334,7 +336,7 @@ export function CommentsSheet({ videoId, visible, onClose }: Props) {
             ListEmptyComponent={
               <View style={styles.empty}>
                 <MessageCircle color={colors.textDim} size={36} />
-                <Text style={styles.emptyText}>抢沙发,留下第一条评论</Text>
+                <Text style={styles.emptyText}>{t('comment.empty')}</Text>
               </View>
             }
             renderItem={renderItem}
@@ -364,7 +366,7 @@ export function CommentsSheet({ videoId, visible, onClose }: Props) {
               <View style={styles.replyChip}>
                 <CornerDownRight color={colors.accent} size={14} />
                 <Text style={styles.replyChipText} numberOfLines={1}>
-                  <Text style={styles.replyChipName}>回复 @{replyTo.authorName}: </Text>
+                  <Text style={styles.replyChipName}>{t('comment.replyTo', { name: replyTo.authorName })}</Text>
                   {replyTo.text}
                 </Text>
                 <Pressable hitSlop={8} onPress={() => { setReplyTo(null); Keyboard.dismiss(); }}>
@@ -406,7 +408,7 @@ export function CommentsSheet({ videoId, visible, onClose }: Props) {
                 onPress={onSubmit}
                 hitSlop={6}
               >
-                <Text style={[styles.sendText, canSend && styles.sendTextActive]}>发送</Text>
+                <Text style={[styles.sendText, canSend && styles.sendTextActive]}>{t('comment.send')}</Text>
               </Pressable>
             </View>
 
@@ -475,6 +477,7 @@ function CommentRow({ comment, onLike, onReply, canDelete, onDelete }: {
   comment: Comment; onLike: () => void; onReply: () => void;
   canDelete: boolean; onDelete: () => void;
 }) {
+  const t = useT();
   const isReply = !!comment.parentId;
   return (
     <View style={[styles.row, isReply && styles.rowReply]}>
@@ -484,22 +487,22 @@ function CommentRow({ comment, onLike, onReply, canDelete, onDelete }: {
         {isReply && comment.replyToName ? (
           <View style={styles.replyIndicatorRow}>
             <CornerDownRight size={11} color={colors.accent} strokeWidth={2} />
-            <Text style={styles.replyIndicator}>回复 @{comment.replyToName}</Text>
+            <Text style={styles.replyIndicator}>{t('comment.replyIndicator', { name: comment.replyToName })}</Text>
           </View>
         ) : null}
         <Text style={styles.body}>{comment.text}</Text>
         <View style={styles.metaRow}>
           <Text style={styles.metaTime}>{timeAgo(comment.createdAt)}</Text>
           <Pressable hitSlop={8} onPress={onReply}>
-            <Text style={styles.metaAction}>回复</Text>
+            <Text style={styles.metaAction}>{t('comment.reply')}</Text>
           </Pressable>
           {canDelete && (
             <Pressable hitSlop={8} onPress={onDelete}>
-              <Text style={styles.metaDelete}>删除</Text>
+              <Text style={styles.metaDelete}>{t('common.delete')}</Text>
             </Pressable>
           )}
           {!isReply && comment.replyCount > 0 && (
-            <Text style={styles.metaTime}>{comment.replyCount} 条回复</Text>
+            <Text style={styles.metaTime}>{t('comment.replyCount', { n: comment.replyCount })}</Text>
           )}
         </View>
       </View>
@@ -520,13 +523,13 @@ function CommentRow({ comment, onLike, onReply, canDelete, onDelete }: {
 function timeAgo(ts: number): string {
   const diff = new Date().valueOf() - ts;
   const m = Math.floor(diff / 60_000);
-  if (m < 1) return '刚刚';
-  if (m < 60) return `${m}分钟前`;
+  if (m < 1) return translate('time.justNow');
+  if (m < 60) return translate('time.minutesAgo', { n: m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}小时前`;
+  if (h < 24) return translate('time.hoursAgo', { n: h });
   const d = Math.floor(h / 24);
-  if (d < 30) return `${d}天前`;
-  return `${Math.floor(d / 30)}个月前`;
+  if (d < 30) return translate('time.daysAgo', { n: d });
+  return translate('time.monthsAgo', { n: Math.floor(d / 30) });
 }
 
 const styles = StyleSheet.create({

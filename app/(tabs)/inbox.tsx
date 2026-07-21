@@ -11,6 +11,7 @@ import { listNotificationsRemote, markAllReadRemote } from '@/api/supabase/notif
 import type { NotificationItem } from '@/api/supabase/notificationMapper';
 import { LoadingState, ErrorState, EmptyState } from '@/components/ui/ScreenState';
 import { UserAvatar } from '@/components/ui/UserAvatar';
+import { useT, t as translate, type TransKey } from '@/i18n';
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -19,19 +20,19 @@ import { UserAvatar } from '@/components/ui/UserAvatar';
 function timeAgo(ms: number): string {
   const diff = Date.now() - ms;
   const minutes = Math.floor(diff / 60_000);
-  if (minutes < 1) return '刚刚';
-  if (minutes < 60) return `${minutes}分钟前`;
+  if (minutes < 1) return translate('time.justNow');
+  if (minutes < 60) return translate('time.minutesAgo', { n: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}小时前`;
+  if (hours < 24) return translate('time.hoursAgo', { n: hours });
   const days = Math.floor(hours / 24);
-  return `${days}天前`;
+  return translate('time.daysAgo', { n: days });
 }
 
-const ACTION_TEXT: Record<string, string> = {
-  like: '赞了你的视频',
-  comment: '评论了你的视频',
-  fork: '续写了你的视频',
-  follow: '关注了你',
+const ACTION_KEY: Record<string, TransKey> = {
+  like: 'inbox.actionLike',
+  comment: 'inbox.actionComment',
+  fork: 'inbox.actionFork',
+  follow: 'inbox.actionFollow',
 };
 
 const ICONS: Record<string, React.ReactNode> = {
@@ -46,7 +47,9 @@ const ICONS: Record<string, React.ReactNode> = {
 // ---------------------------------------------------------------------------
 
 function NotificationRow({ item }: { item: NotificationItem }) {
-  const actionText = ACTION_TEXT[item.type] ?? item.type;
+  const t = useT();
+  const actionKey = ACTION_KEY[item.type];
+  const actionText = actionKey ? t(actionKey) : item.type;
   return (
     <View style={[styles.row, !item.read && styles.rowUnread]}>
       <View style={styles.iconBg}>{ICONS[item.type] ?? null}</View>
@@ -70,6 +73,7 @@ function NotificationRow({ item }: { item: NotificationItem }) {
 // ---------------------------------------------------------------------------
 
 export default function InboxScreen() {
+  const t = useT();
   const { contentBottomPad } = useTabBarSpace();
   const qc = useQueryClient();
 
@@ -98,7 +102,7 @@ export default function InboxScreen() {
 
   const header = (
     <View style={styles.header}>
-      <Text style={styles.title}>通知</Text>
+      <Text style={styles.title}>{t('inbox.title')}</Text>
       <Bell color={colors.textMuted} size={22} />
     </View>
   );
@@ -107,7 +111,7 @@ export default function InboxScreen() {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
         {header}
-        <EmptyState title="通知是云端能力" subtitle="请配置 Supabase 后使用" />
+        <EmptyState title={t('inbox.cloudTitle')} subtitle={t('inbox.cloudSub')} />
       </SafeAreaView>
     );
   }
@@ -134,7 +138,7 @@ export default function InboxScreen() {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
         {header}
-        <EmptyState title="还没有通知" />
+        <EmptyState title={t('inbox.empty')} />
       </SafeAreaView>
     );
   }

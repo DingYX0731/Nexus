@@ -8,6 +8,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Sparkles } from 'lucide-react-native';
 import { FeedPager } from '@/components/feed/FeedPager';
 import { useLocalVideos } from '@/store/videos';
+import { useT } from '@/i18n';
 import { listFeed } from '@/api/videos';
 import { hasSupabase } from '@/api/client';
 import { colors } from '@/theme';
@@ -15,6 +16,7 @@ import { LoadingState, ErrorState, EmptyState } from '@/components/ui/ScreenStat
 
 export default function FeedScreen() {
   const router = useRouter();
+  const t = useT();
   const qc = useQueryClient();
 
   // ── Supabase 路径：react-query 从云端读已发布视频 ──────────────────────────
@@ -53,7 +55,7 @@ export default function FeedScreen() {
   const isError = hasSupabase ? remoteError : false;
 
   if (isLoading) {
-    return <LoadingState text="加载中…" />;
+    return <LoadingState text={t('common.loading')} />;
   }
 
   if (isError) {
@@ -63,10 +65,10 @@ export default function FeedScreen() {
   if (videos.length === 0) {
     return (
       <EmptyState
-        title="还没有视频"
-        subtitle="成为第一个创作者,用 AI 生成你的短视频"
+        title={t('home.emptyTitle')}
+        subtitle={t('home.emptySub')}
         icon={<Sparkles color={colors.primary} size={32} />}
-        cta={{ label: '开始创作', onPress: () => router.push('/(tabs)/create') }}
+        cta={{ label: t('home.emptyCta'), onPress: () => router.push('/(tabs)/create') }}
       />
     );
   }

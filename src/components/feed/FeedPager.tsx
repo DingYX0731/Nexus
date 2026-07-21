@@ -8,6 +8,7 @@ import { VideoCard } from './VideoCard';
 import { recordPlay } from '@/api/videos';
 import { useAuth } from '@/store/auth';
 import { showToast } from '@/components/toast/Toast';
+import { t as translate } from '@/i18n';
 
 const ANON_NUDGE_AFTER_N_VIDEOS = 3;
 
@@ -31,8 +32,8 @@ export function FeedPager({ videos }: { videos: Video[] }) {
     if (isAnonymous && !anonNudgeShown.current && idx >= ANON_NUDGE_AFTER_N_VIDEOS) {
       anonNudgeShown.current = true;
       showToast({
-        message: '喜欢这些视频?登录后可以生成你自己的',
-        actionLabel: '去登录',
+        message: translate('feed.loginPrompt'),
+        actionLabel: translate('feed.loginAction'),
         onAction: () => router.push('/auth/login'),
         durationMs: 4500,
       });
