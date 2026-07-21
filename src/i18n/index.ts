@@ -9,16 +9,29 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Localization from 'expo-localization';
+import { NativeModules, Platform } from 'react-native';
 import { translations, type Lang, type TransKey } from './translations';
 
-function systemLang(): Lang {
+// 读系统语言，用 RN 内置 API（不引入原生模块，无需重建 dev client）。
+function deviceLocale(): string {
   try {
-    const code = Localization.getLocales()[0]?.languageCode ?? 'zh';
-    return code.startsWith('zh') ? 'zh' : 'en';
+    if (Platform.OS === 'ios') {
+      const s = NativeModules.SettingsManager?.settings;
+      return (
+        s?.AppleLocale ||
+        s?.AppleLanguages?.[0] ||
+        'zh'
+      );
+    }
+    return NativeModules.I18nManager?.localeIdentifier ?? 'zh';
   } catch {
     return 'zh';
   }
+}
+
+function systemLang(): Lang {
+  const code = deviceLocale().toLowerCase();
+  return code.startsWith('zh') ? 'zh' : 'en';
 }
 
 interface I18nState {
