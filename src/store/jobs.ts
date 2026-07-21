@@ -23,6 +23,7 @@ import { grantCreditsRemote } from '@/api/supabase/creditsRepo';
 import { uploadTailFrame } from '@/api/supabase/framesRepo';
 import { extractLastFrame } from '@/hooks/useVideoThumbnail';
 import { queryClient } from '@/api/queryClient';
+import { t } from '@/i18n';
 
 export type JobKind = 'text_to_video' | 'continuation' | 'prompt_remix';
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
@@ -61,7 +62,7 @@ const useJobsStoreInternal = create<JobsStore>()(
       })),
       cancel: (id) => set((s) => ({
         jobs: s.jobs.map((j) => (j.id === id && (j.status === 'queued' || j.status === 'running')
-          ? { ...j, status: 'cancelled' as const, statusMsg: '已取消' }
+          ? { ...j, status: 'cancelled' as const, statusMsg: t('job.cancelled') }
           : j)),
       })),
       visibleFor: (userId) =>
@@ -78,7 +79,7 @@ const useJobsStoreInternal = create<JobsStore>()(
         if (!state) return;
         state.jobs = state.jobs.map((j) =>
           j.status === 'queued' || j.status === 'running'
-            ? { ...j, status: 'failed' as const, statusMsg: '生成中断（App 已重开），请重试' }
+            ? { ...j, status: 'failed' as const, statusMsg: t('job.interrupted') }
             : j,
         );
       },
@@ -94,11 +95,11 @@ function newId() {
 
 function statusToMsg(s: string): string {
   switch (s) {
-    case 'queued': return '排队中...';
-    case 'running': return '正在生成,请稍候...';
-    case 'succeeded': return '完成';
-    case 'failed': return '失败';
-    case 'cancelled': return '已取消';
+    case 'queued': return t('job.queued');
+    case 'running': return t('job.running');
+    case 'succeeded': return t('job.done');
+    case 'failed': return t('job.failedShort');
+    case 'cancelled': return t('job.cancelled');
     default: return s;
   }
 }
@@ -117,14 +118,14 @@ interface SubmitRemixOptions {
 }
 function authorOfNew(): { id: string; username: string } {
   const { user, isAnonymous } = useAuth.getState();
-  if (isAnonymous || !user) return { id: 'anon', username: '匿名用户' };
+  if (isAnonymous || !user) return { id: 'anon', username: t('job.anonUser') };
   return { id: user.id, username: user.username };
 }
 
 // ── 保底（本地 Mock）路径专用辅助函数 ──────────────────────────────────────
 
 async function runProviderText(rec: AiJobRecord, prompt: string) {
-  useJobsStoreInternal.getState().patch(rec.id, { statusMsg: '提交任务到 AI Provider...' });
+  useJobsStoreInternal.getState().patch(rec.id, { statusMsg: t('job.submitting') });
   const { jobId: externalJobId } = await defaultProvider.textToVideo({
     prompt,
     aspect: rec.aspect,
@@ -135,7 +136,7 @@ async function runProviderText(rec: AiJobRecord, prompt: string) {
 }
 
 async function runProviderImage(rec: AiJobRecord, imageUrl: string, prompt: string) {
-  useJobsStoreInternal.getState().patch(rec.id, { statusMsg: '提交任务到 AI Provider...' });
+  useJobsStoreInternal.getState().patch(rec.id, { statusMsg: t('job.submitting') });
   const { jobId: externalJobId } = await defaultProvider.imageToVideo({
     imageUrl,
     prompt,
@@ -168,10 +169,10 @@ async function pollUntilDone(rec: AiJobRecord, externalJobId: string): Promise<{
       // 网络抖动:连续 3 次失败才放弃,期间 sleep 后重试
       consecutiveFailures += 1;
       if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-        throw new Error(netErr?.message ?? '网络异常,请稍后重试');
+        throw new Error(netErr?.message ?? t('job.networkError'));
       }
       useJobsStoreInternal.getState().patch(rec.id, {
-        statusMsg: `网络波动,重试中 (${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES})`,
+        statusMsg: t('job.networkRetry', { n: consecutiveFailures, max: MAX_CONSECUTIVE_FAILURES }),
       });
       await new Promise((r) => setTimeout(r, 3000));
       continue;
@@ -195,8 +196,8 @@ async function pollUntilDone(rec: AiJobRecord, externalJobId: string): Promise<{
         height: job.height,
       };
     }
-    if (job.status === 'failed') throw new Error(job.error ?? '生成失败');
-    if (Date.now() - start > TIMEOUT) throw new Error('生成超时');
+    if (job.status === 'failed') throw new Error(job.error ?? t('job.failed'));
+    if (Date.now() - start > TIMEOUT) throw new Error(t('job.timeout'));
     await new Promise((r) => setTimeout(r, interval));
     interval = Math.min(interval + 1500, 5000);
   }
@@ -225,14 +226,14 @@ function finalize(rec: AiJobRecord, result: {
   if (parent) useLocalVideos.getState().bumpStat(parent.id, 'fork_count');
   useJobsStoreInternal.getState().patch(rec.id, {
     status: 'succeeded',
-    statusMsg: '完成',
+    statusMsg: t('job.done'),
     finishedAt: Date.now(),
     finishedVideoId: video.id,
   });
   // 完成提示:用户可能已经切到其他 tab,toast 让 ta 不错过
   showToast({
-    message: '你的视频已生成',
-    actionLabel: '查看',
+    message: t('job.videoReady'),
+    actionLabel: t('job.view'),
     onAction: () => router.push(`/video/${video.id}`),
   });
 }
@@ -241,10 +242,10 @@ function fail(rec: AiJobRecord, err: any) {
   const wasCancelled = err?.message === 'cancelled';
   const isCreditsExhausted =
     err instanceof CreditsExhaustedError || err?.code === 'credits_exhausted';
-  const msg = wasCancelled ? '已取消' : (err?.message ?? '生成失败');
+  const msg = wasCancelled ? t('job.cancelled') : (err?.message ?? t('job.failed'));
   useJobsStoreInternal.getState().patch(rec.id, {
     status: wasCancelled ? 'cancelled' : 'failed',
-    statusMsg: isCreditsExhausted ? '额度不足' : msg,
+    statusMsg: isCreditsExhausted ? t('job.creditsLow') : msg,
     finishedAt: Date.now(),
   });
   // 失败/取消都退还额度——仅保底模式在客户端扣减,Supabase 模式由 Edge Function 负责。
@@ -257,25 +258,25 @@ function fail(rec: AiJobRecord, err: any) {
     // 额度不足:弹引导对话框,允许用户领取体验额度
     const userId = rec.ownerUserId;
     showDialog({
-      title: '额度不足',
-      message: '你的生成额度已耗尽。可以领取 5 个体验额度继续创作。',
-      primaryLabel: '领取体验额度',
-      secondaryLabel: '知道了',
+      title: t('job.creditsLow'),
+      message: t('job.creditsLowMsg'),
+      primaryLabel: t('job.claimCredits'),
+      secondaryLabel: t('common.ok'),
       icon: 'sparkles',
       onPrimary: async () => {
         try {
           await grantCreditsRemote(5);
           await useCredits.getState().syncRemote(userId);
-          showToast({ message: '已领取 5 额度,快去创作吧!' });
+          showToast({ message: t('job.claimed') });
         } catch (e: any) {
-          showToast({ message: `领取失败:${e?.message ?? '请稍后重试'}`, durationMs: 4000 });
+          showToast({ message: t('job.claimFailed', { msg: e?.message ?? '' }), durationMs: 4000 });
         }
       },
     });
     return;
   }
 
-  showToast({ message: `生成失败:${msg}`, durationMs: 4000 });
+  showToast({ message: t('job.failedToast', { msg }), durationMs: 4000 });
 }
 
 // ── Supabase 路径辅助：单次 callGenerate，完成后入本地流 ──────────────────
@@ -285,7 +286,7 @@ async function runWithSupabase(
   generateArgs: Parameters<typeof callGenerate>[0],
   parent?: Video,
 ): Promise<void> {
-  useJobsStoreInternal.getState().patch(rec.id, { status: 'running', statusMsg: '正在生成,请稍候...' });
+  useJobsStoreInternal.getState().patch(rec.id, { status: 'running', statusMsg: t('job.running') });
   // 注入用户自带凭证：provider 当前选中的 model + SecureStore 里的 key（现取，仅上送本次）。
   const settings = useAiSettings.getState();
   const provider = settings.provider;
@@ -302,13 +303,13 @@ async function runWithSupabase(
   if (parent) queryClient.invalidateQueries({ queryKey: ['video', parent.id] });
   useJobsStoreInternal.getState().patch(rec.id, {
     status: 'succeeded',
-    statusMsg: '完成',
+    statusMsg: t('job.done'),
     finishedAt: Date.now(),
     finishedVideoId: video.id,
   });
   showToast({
-    message: '你的视频已生成',
-    actionLabel: '查看',
+    message: t('job.videoReady'),
+    actionLabel: t('job.view'),
     onAction: () => router.push(`/video/${video.id}`),
   });
 }
@@ -324,7 +325,7 @@ export async function submitTextToVideo(opts: SubmitTextOptions): Promise<AiJobR
     promptSummary: opts.prompt,
     aspect: opts.aspect,
     status: 'queued',
-    statusMsg: '排队中...',
+    statusMsg: t('job.queued'),
     createdAt: Date.now(),
   };
   useJobsStoreInternal.getState().add(rec);
@@ -359,7 +360,7 @@ async function resolveContinuationFrame(rec: AiJobRecord, parentVideo: Video): P
   if (parentVideo.tail_frame_url) return parentVideo.tail_frame_url;
   if (hasSupabase && parentVideo.video_url) {
     try {
-      useJobsStoreInternal.getState().patch(rec.id, { statusMsg: '正在提取上一段末帧...' });
+      useJobsStoreInternal.getState().patch(rec.id, { statusMsg: t('job.extractingFrame') });
       const localUri = await extractLastFrame(parentVideo.video_url, parentVideo.duration_ms);
       if (localUri) {
         // rec.id 每次提交唯一，保证同一父视频多次续写各自的尾帧 URL 不同，避免串帧
@@ -383,7 +384,7 @@ export async function submitContinuation(opts: SubmitContinuationOptions): Promi
     promptSummary: opts.prompt,
     parentVideoId: opts.parentVideo.id,
     status: 'queued',
-    statusMsg: '排队中...',
+    statusMsg: t('job.queued'),
     createdAt: Date.now(),
   };
   useJobsStoreInternal.getState().add(rec);
@@ -436,7 +437,7 @@ export async function submitRemix(opts: SubmitRemixOptions): Promise<AiJobRecord
     promptSummary: opts.prompt,
     parentVideoId: opts.parentVideo.id,
     status: 'queued',
-    statusMsg: '排队中...',
+    statusMsg: t('job.queued'),
     createdAt: Date.now(),
   };
   useJobsStoreInternal.getState().add(rec);
