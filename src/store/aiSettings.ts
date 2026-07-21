@@ -9,7 +9,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as SecureStore from 'expo-secure-store';
+import { setKey as ssSet, getKey as ssGet, deleteKey as ssDelete } from './secureKeyStore';
 
 // 目前平台实测可用的 provider / 模型（用户 key 无权限的不在此列）。
 export type ProviderId = 'doubao';
@@ -81,35 +81,25 @@ export const useAiSettings = create<AiSettingsState>()(
       saveKey: async (p, key) => {
         const trimmed = key.trim();
         if (!isValidApiKeyFormat(trimmed)) return false;
-        await SecureStore.setItemAsync(KEY_STORE_PREFIX + p, trimmed, {
-          keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-        });
+        await ssSet(KEY_STORE_PREFIX + p, trimmed);
         set((s) => ({ hasKey: { ...s.hasKey, [p]: true } }));
         return true;
       },
 
       clearKey: async (p) => {
-        await SecureStore.deleteItemAsync(KEY_STORE_PREFIX + p);
+        await ssDelete(KEY_STORE_PREFIX + p);
         set((s) => ({ hasKey: { ...s.hasKey, [p]: false } }));
       },
 
       getKey: async (p) => {
-        try {
-          return await SecureStore.getItemAsync(KEY_STORE_PREFIX + p);
-        } catch {
-          return null;
-        }
+        return await ssGet(KEY_STORE_PREFIX + p);
       },
 
       refreshHasKey: async () => {
         const result: Record<string, boolean> = {};
         for (const prov of PROVIDERS) {
-          try {
-            const v = await SecureStore.getItemAsync(KEY_STORE_PREFIX + prov.id);
-            result[prov.id] = !!v;
-          } catch {
-            result[prov.id] = false;
-          }
+          const v = await ssGet(KEY_STORE_PREFIX + prov.id);
+          result[prov.id] = !!v;
         }
         set({ hasKey: result });
       },
