@@ -51,7 +51,7 @@ export function AiProviderSection() {
 
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{t('settings.section.create')}</Text>
+      <Text style={styles.sectionTitle}>{t('ai.provider')}</Text>
       <View style={styles.body}>
         {/* 服务商选择 */}
         <View style={styles.block}>

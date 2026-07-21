@@ -2,7 +2,7 @@ import { View, Text, Pressable, StyleSheet, ScrollView, Alert, Share } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
-  X, User as UserIcon, Coins, Bell, Shield, Info,
+  X, User as UserIcon, Coins, Bell, Shield, Info, Sparkles, Languages,
   HelpCircle, LogOut, ChevronRight, FileText, Pencil,
 } from 'lucide-react-native';
 import { useEffect } from 'react';
@@ -18,14 +18,22 @@ import { showToast } from '@/components/toast/Toast';
 import { CreditsDisplay } from '@/components/ui/CreditsDisplay';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { getProfile } from '@/api/supabase/profilesRepo';
-import { AiProviderSection } from '@/components/settings/AiProviderSection';
-import { LanguageSection } from '@/components/settings/LanguageSection';
-import { useT } from '@/i18n';
+import { useT, useI18n } from '@/i18n';
+import { useAiSettings, PROVIDERS } from '@/store/aiSettings';
 
 export default function SettingsScreen() {
   const router = useRouter();
   const t = useT();
   const { user, isAnonymous, signOut } = useAuth();
+
+  // 入口行右侧显示当前值
+  const aiProvider = useAiSettings((s) => s.provider);
+  const providerLabel = PROVIDERS.find((p) => p.id === aiProvider)?.label ?? aiProvider;
+  const followSystem = useI18n((s) => s.followSystem);
+  const lang = useI18n((s) => s.lang);
+  const langLabel = followSystem
+    ? t('settings.lang.system')
+    : lang === 'zh' ? t('settings.lang.zh') : t('settings.lang.en');
   const creditsMap = useCredits((s) => s.byUser);
   const ensureCreditsInit = useCredits((s) => s.ensureInit);
   const syncRemote = useCredits((s) => s.syncRemote);
@@ -148,11 +156,23 @@ export default function SettingsScreen() {
           />
         </Section>
 
-        {/* 创作：AI 服务商 + 自带 API Key */}
-        <AiProviderSection />
-
-        {/* 语言 */}
-        <LanguageSection />
+        {/* 创作 + 语言：入口，点进二级页面设置 */}
+        <Section title={t('settings.section.create')}>
+          <Row
+            icon={<Sparkles color={colors.accent} size={18} />}
+            label={t('ai.provider')}
+            value={providerLabel}
+            onPress={() => router.push('/settings/ai-provider' as any)}
+            chevron
+          />
+          <Row
+            icon={<Languages color={colors.text} size={18} />}
+            label={t('settings.language')}
+            value={langLabel}
+            onPress={() => router.push('/settings/language' as any)}
+            chevron
+          />
+        </Section>
 
         {/* 通知 */}
         <Section title={t('settings.section.notify')}>
