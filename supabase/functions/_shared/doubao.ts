@@ -5,7 +5,7 @@
 // 同步轮询会撞 Edge Function 墙钟上限，故拆成 createTask + queryTask 两个短调用。
 
 const BASE = Deno.env.get('DOUBAO_BASE_URL') ?? 'https://llmapi.paratera.com';
-const ENV_KEY = Deno.env.get('DOUBAO_API_KEY') ?? '';       // 兜底 key（用户未自带时用）
+// 不再保留服务端兜底 key —— 强制用户自带 key（见 resolveKey）。
 const ENV_MODEL = Deno.env.get('DOUBAO_MODEL') ?? 'Doubao-Seedance-1.0-Pro';
 const TASKS = '/v1/p001/contents/generations/tasks';
 
@@ -25,8 +25,10 @@ function sanitizeKey(k?: string): string {
   return t;
 }
 
+// 强制用户自带 key：不再回落服务端 env key。用户未配置合法 key 即返回空，
+// 上层据此抛「未配置 API Key」错误，避免消耗共享额度。
 function resolveKey(creds?: UserCreds): string {
-  return sanitizeKey(creds?.apiKey) || ENV_KEY;
+  return sanitizeKey(creds?.apiKey);
 }
 
 // model 白名单校验：只允许已知安全的模型名字符集，防注入/滥用。未提供或非法则回落 env。

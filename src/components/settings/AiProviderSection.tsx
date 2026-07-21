@@ -147,7 +147,8 @@ export function AiProviderSection() {
           <View style={styles.securityNote}>
             <ShieldCheck color={colors.textMuted} size={13} />
             <Text style={styles.securityText}>
-              Key 仅加密保存在本机（系统钥匙串），生成时经 HTTPS 上送、用完即弃，服务端不留存、不记录。
+              生成需使用你自己的 API Key。Key 仅加密保存在本机（系统钥匙串），生成时经 HTTPS
+              上送、用完即弃，服务端不留存、不记录。
             </Text>
           </View>
         </View>

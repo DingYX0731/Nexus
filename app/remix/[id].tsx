@@ -8,6 +8,7 @@ import { getVideo } from '@/api/videos';
 import { colors, radius, spacing, typography } from '@/theme';
 import { useAuth } from '@/store/auth';
 import { useCredits, COST_GENERATION } from '@/store/credits';
+import { useAiSettings } from '@/store/aiSettings';
 import { submitContinuation, submitRemix } from '@/store/jobs';
 import { hasSupabase } from '@/api/client';
 import { showDialog } from '@/components/dialog/ConfirmDialog';
@@ -29,6 +30,13 @@ export default function RemixScreen() {
   const charge = useCredits((s) => s.charge);
   const refund = useCredits((s) => s.refund);
   const credits = user ? (creditsMap[user.id] ?? 5) : 0;
+
+  // 强制自带 key：无 key 不允许生成
+  const aiProvider = useAiSettings((s) => s.provider);
+  const hasKey = useAiSettings((s) => s.hasKey);
+  const refreshHasKey = useAiSettings((s) => s.refreshHasKey);
+  useEffect(() => { void refreshHasKey(); }, [refreshHasKey]);
+  const keyConfigured = !!hasKey[aiProvider];
   useEffect(() => {
     if (user) {
       if (hasSupabase) {
@@ -62,6 +70,13 @@ export default function RemixScreen() {
 
   const onSubmit = async () => {
     if (!prompt.trim() || !source) return;
+    if (!keyConfigured) {
+      Alert.alert('需要 API Key', '请先在设置中填写你自己的 API Key 才能生成。', [
+        { text: '取消', style: 'cancel' },
+        { text: '去设置', onPress: () => router.push('/settings' as any) },
+      ]);
+      return;
+    }
     if (credits < COST_GENERATION) {
       if (hasSupabase) {
         showDialog({

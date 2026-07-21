@@ -94,6 +94,13 @@ function CreateAuthed({ userId, username, contentBottomPad }:
   );
 
   const onSubmit = async () => {
+    if (!keyConfigured) {
+      Alert.alert('需要 API Key', '请先在设置中填写你自己的 API Key 才能生成。', [
+        { text: '取消', style: 'cancel' },
+        { text: '去设置', onPress: () => router.push('/settings' as any) },
+      ]);
+      return;
+    }
     if (!prompt.trim()) {
       Alert.alert('请输入 prompt', '描述一下你想生成什么样的画面。');
       return;
@@ -198,7 +205,7 @@ function CreateAuthed({ userId, username, contentBottomPad }:
           {!keyConfigured && (
             <Pressable style={styles.keyWarn} onPress={() => router.push('/settings' as any)}>
               <Text style={styles.keyWarnText}>
-                未配置 API Key,将使用服务端默认额度。点此在设置中填写自己的 Key →
+                需先在设置中填写自己的 API Key 才能生成。点此前往设置 →
               </Text>
             </Pressable>
           )}
@@ -216,8 +223,8 @@ function CreateAuthed({ userId, username, contentBottomPad }:
           </View>
 
           <Pressable
-            style={[styles.button, (credits < COST_GENERATION) && styles.buttonDisabled]}
-            disabled={credits < COST_GENERATION}
+            style={[styles.button, (credits < COST_GENERATION || !keyConfigured) && styles.buttonDisabled]}
+            disabled={credits < COST_GENERATION || !keyConfigured}
             onPress={onSubmit}
           >
             <Sparkles color="#fff" size={18} />
