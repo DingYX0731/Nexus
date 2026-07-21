@@ -64,8 +64,10 @@ Deno.serve(async (req) => {
     if (!user) return json({ error: '未登录' }, 401);
 
     const admin = createClient(url, service);
-    const { videoId } = await req.json();
+    const { videoId, apiKey, model } = await req.json();
     if (!videoId) return json({ error: '缺少 videoId' }, 400);
+    // 用户自带凭证：轮询查询也需带 key。只在内存使用，绝不落库/打日志。
+    const creds = { apiKey, model };
 
     // 查 video 行（确认归属 + 拿 task_id + 当前状态 + 创建时间）
     const { data: row } = await admin
@@ -81,7 +83,7 @@ Deno.serve(async (req) => {
     if (!row.doubao_task_id) return json({ error: '缺少 task id' }, 500);
 
     // 查豆包
-    const task = await queryTask(row.doubao_task_id);
+    const task = await queryTask(row.doubao_task_id, creds);
 
     if (task.state === 'queued' || task.state === 'running') {
       return json({ status: 'generating', videoId }, 200);

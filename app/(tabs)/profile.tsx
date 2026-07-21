@@ -10,6 +10,7 @@ import { useLocalVideos } from '@/store/videos';
 import { listMyVideos, listLikedVideos } from '@/api/videos';
 import { hasSupabase } from '@/api/client';
 import { resumePoll } from '@/api/supabase/generateClient';
+import { useAiSettings } from '@/store/aiSettings';
 import { getFollowCounts } from '@/api/supabase/followsRepo';
 import { getProfile } from '@/api/supabase/profilesRepo';
 import { useTabBarSpace } from '@/hooks/useTabBarSpace';
@@ -55,7 +56,13 @@ export default function ProfileScreen() {
     for (const v of videos) {
       if (v.status === 'generating' && !pollingRef.current.has(v.id)) {
         pollingRef.current.add(v.id);
-        resumePoll(v.id)
+        // 续轮询也带上当前凭证（查询需 key）；现取 SecureStore，仅上送本次。
+        (async () => {
+          const s = useAiSettings.getState();
+          const apiKey = (await s.getKey(s.provider)) ?? undefined;
+          const model = s.modelByProvider[s.provider];
+          return resumePoll(v.id, { apiKey, model });
+        })()
           .catch(() => undefined)
           .finally(() => {
             pollingRef.current.delete(v.id);

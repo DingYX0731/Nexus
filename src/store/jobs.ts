@@ -18,6 +18,7 @@ import { showToast } from '@/components/toast/Toast';
 import { showDialog } from '@/components/dialog/ConfirmDialog';
 import { hasSupabase } from '@/api/client';
 import { callGenerate, CreditsExhaustedError } from '@/api/supabase/generateClient';
+import { useAiSettings } from './aiSettings';
 import { grantCreditsRemote } from '@/api/supabase/creditsRepo';
 import { uploadTailFrame } from '@/api/supabase/framesRepo';
 import { extractLastFrame } from '@/hooks/useVideoThumbnail';
@@ -285,7 +286,12 @@ async function runWithSupabase(
   parent?: Video,
 ): Promise<void> {
   useJobsStoreInternal.getState().patch(rec.id, { status: 'running', statusMsg: '正在生成,请稍候...' });
-  const video = await callGenerate(generateArgs);
+  // 注入用户自带凭证：provider 当前选中的 model + SecureStore 里的 key（现取，仅上送本次）。
+  const settings = useAiSettings.getState();
+  const provider = settings.provider;
+  const model = settings.modelByProvider[provider];
+  const apiKey = (await settings.getKey(provider)) ?? undefined;
+  const video = await callGenerate({ ...generateArgs, model, apiKey });
   // cancel guard:生成期间用户可能已取消
   const cur = useJobsStoreInternal.getState().jobs.find((j) => j.id === rec.id);
   if (!cur || cur.status === 'cancelled') return;

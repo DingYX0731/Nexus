@@ -32,7 +32,9 @@ Deno.serve(async (req) => {
 
     const admin = createClient(url, service);
     const body = await req.json();
-    const { kind, prompt, parentTailFrameUrl, parentId, aspect } = body;
+    const { kind, prompt, parentTailFrameUrl, parentId, aspect, apiKey, model } = body;
+    // apiKey/model 为用户自带凭证：只在本次请求内存中使用，绝不落库、绝不打日志。
+    const creds = { apiKey, model };
 
     // Prompt 输入校验（在扣额度之前，避免无效请求也扣额度）
     if (typeof prompt !== 'string') {
@@ -58,6 +60,7 @@ Deno.serve(async (req) => {
         prompt,
         aspect ?? '9:16',
         kind === 'continuation' ? parentTailFrameUrl : undefined,
+        creds,
       );
 
       // 3. 算 root/depth/remix_kind

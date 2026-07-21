@@ -5,7 +5,7 @@ import { useRouter } from 'expo-router';
 import { Sparkles, Wand2, Lock, Clock, CheckCircle2, XCircle, ChevronRight } from 'lucide-react-native';
 import { CreditsDisplay } from '@/components/ui/CreditsDisplay';
 import { colors, radius, spacing, typography } from '@/theme';
-import { defaultProvider } from '@/ai/VideoGenProvider';
+import { useAiSettings, PROVIDERS } from '@/store/aiSettings';
 import { useTabBarSpace } from '@/hooks/useTabBarSpace';
 import { useAuth } from '@/store/auth';
 import { useCredits, COST_GENERATION } from '@/store/credits';
@@ -21,12 +21,6 @@ const PROMPT_SUGGESTIONS = [
   '少女在樱花树下转圈,花瓣随风飘散',
   '机器人在废墟里点燃篝火,赛博朋克风',
 ];
-
-const PROVIDER_LABEL: Record<string, string> = {
-  mock: 'Mock(本地示例)',
-  doubao: '豆包 Seedance',
-  kling: '可灵 Kling',
-};
 
 export default function CreateScreen() {
   const router = useRouter();
@@ -82,6 +76,18 @@ function CreateAuthed({ userId, username, contentBottomPad }:
   }, [userId, ensureCreditsInit, syncRemote]);
 
   const credits = creditsMap[userId] ?? 5; // ensureInit 之前先用默认值,避免 0 闪一下
+
+  // AI 模型设置（provider 当前只有一个可用模型，框架已就绪，未来可扩展）
+  const aiProvider = useAiSettings((s) => s.provider);
+  const modelByProvider = useAiSettings((s) => s.modelByProvider);
+  const setModel = useAiSettings((s) => s.setModel);
+  const hasKey = useAiSettings((s) => s.hasKey);
+  const refreshHasKey = useAiSettings((s) => s.refreshHasKey);
+  useEffect(() => { void refreshHasKey(); }, [refreshHasKey]);
+  const providerModels = PROVIDERS.find((p) => p.id === aiProvider)?.models ?? [];
+  const selectedModel = modelByProvider[aiProvider] ?? providerModels[0]?.id;
+  const keyConfigured = !!hasKey[aiProvider];
+
   const myJobs = useMemo(
     () => allJobs.filter((j) => j.ownerUserId === userId).slice(0, 20),
     [allJobs, userId],
@@ -171,6 +177,31 @@ function CreateAuthed({ userId, username, contentBottomPad }:
               </Pressable>
             ))}
           </View>
+
+          <Text style={styles.sectionLabel}>模型</Text>
+          <View style={styles.aspectRow}>
+            {providerModels.map((m) => (
+              <Pressable
+                key={m.id}
+                style={[styles.aspectChip, selectedModel === m.id && styles.aspectChipActive]}
+                onPress={() => setModel(aiProvider, m.id)}
+              >
+                <Text style={[styles.aspectText, selectedModel === m.id && styles.aspectTextActive]}>{m.label}</Text>
+                {m.note && (
+                  <Text style={[styles.aspectHint, selectedModel === m.id && styles.aspectHintActive]} numberOfLines={1}>
+                    {m.note}
+                  </Text>
+                )}
+              </Pressable>
+            ))}
+          </View>
+          {!keyConfigured && (
+            <Pressable style={styles.keyWarn} onPress={() => router.push('/settings' as any)}>
+              <Text style={styles.keyWarnText}>
+                未配置 API Key,将使用服务端默认额度。点此在设置中填写自己的 Key →
+              </Text>
+            </Pressable>
+          )}
 
           <Text style={styles.sectionLabel}>画幅</Text>
           <View style={styles.aspectRow}>
@@ -318,6 +349,13 @@ const styles = StyleSheet.create({
   aspectTextActive: { color: colors.primary },
   aspectHint: { ...typography.tiny, color: colors.textDim, marginTop: 2 },
   aspectHintActive: { color: colors.primaryDim },
+
+  keyWarn: {
+    marginTop: spacing.sm, padding: spacing.sm,
+    backgroundColor: colors.primarySoft, borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: colors.primary,
+  },
+  keyWarnText: { ...typography.tiny, color: colors.text, lineHeight: 16 },
 
   button: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm,

@@ -17,6 +17,10 @@ export interface GenerateArgs {
   parentTailFrameUrl?: string;
   parentId?: string;
   aspect?: '9:16' | '16:9';
+  /** 用户选择的模型（随生成上送）。 */
+  model?: string;
+  /** 用户自带 API key（从 SecureStore 现取，仅本次上送；不持久化到别处）。 */
+  apiKey?: string;
 }
 
 interface StartResp { videoId?: string; status?: string; error?: string }
@@ -56,7 +60,10 @@ async function extractEdgeError(err: unknown): Promise<string> {
  * 对已有 videoId 进行续轮询，直到 ready/failed 或超时。
  * 供 callGenerate 内部使用，也供个人页进入时恢复未完成的轮询。
  */
-export async function resumePoll(videoId: string): Promise<'ready' | 'failed'> {
+export async function resumePoll(
+  videoId: string,
+  creds?: { apiKey?: string; model?: string },
+): Promise<'ready' | 'failed'> {
   const deadline = Date.now() + POLL_TIMEOUT_MS;
   // 单次 poll 调用失败（网络抖动 / Edge 冷启动 / 转存慢引发的 5xx）不该立即判死整个任务——
   // 豆包那边多半还在正常生成。容忍连续几次失败，超过阈值才真正抛错。
@@ -65,7 +72,9 @@ export async function resumePoll(videoId: string): Promise<'ready' | 'failed'> {
   let lastError = '';
   while (Date.now() < deadline) {
     await sleep(POLL_INTERVAL_MS);
-    const { data, error } = await supabase().functions.invoke('poll-video', { body: { videoId } });
+    const { data, error } = await supabase().functions.invoke('poll-video', {
+      body: { videoId, apiKey: creds?.apiKey, model: creds?.model },
+    });
     if (error) {
       lastError = await extractEdgeError(error);
       consecutiveErrors += 1;
@@ -113,8 +122,8 @@ export async function callGenerate(args: GenerateArgs): Promise<Video> {
 
   const videoId = start.videoId;
 
-  // 2. 复用 resumePoll 轮询
-  const result = await resumePoll(videoId);
+  // 2. 复用 resumePoll 轮询（带上同一份凭证，轮询查询也需 key）
+  const result = await resumePoll(videoId, { apiKey: args.apiKey, model: args.model });
   if (result === 'ready') {
     const video = await getVideoRow(videoId);
     if (!video) throw new Error('生成完成但读取视频失败');

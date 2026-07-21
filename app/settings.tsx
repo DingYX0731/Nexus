@@ -2,7 +2,7 @@ import { View, Text, Pressable, StyleSheet, ScrollView, Alert, Share } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
-  X, User as UserIcon, Sparkles, Coins, Bell, Shield, Info,
+  X, User as UserIcon, Coins, Bell, Shield, Info,
   HelpCircle, LogOut, ChevronRight, FileText, Pencil,
 } from 'lucide-react-native';
 import { useEffect } from 'react';
@@ -14,17 +14,11 @@ import { hasSupabase } from '@/api/client';
 import { useLocalVideos } from '@/store/videos';
 import { listMyVideos } from '@/api/videos';
 import { grantCreditsRemote } from '@/api/supabase/creditsRepo';
-import { defaultProvider } from '@/ai/VideoGenProvider';
 import { showToast } from '@/components/toast/Toast';
 import { CreditsDisplay } from '@/components/ui/CreditsDisplay';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { getProfile } from '@/api/supabase/profilesRepo';
-
-const PROVIDER_LABEL: Record<string, string> = {
-  mock: 'Mock(本地示例)',
-  doubao: '豆包 Seedance',
-  kling: '可灵 Kling',
-};
+import { AiProviderSection } from '@/components/settings/AiProviderSection';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -151,15 +145,8 @@ export default function SettingsScreen() {
           />
         </Section>
 
-        {/* 创作 */}
-        <Section title="创作">
-          <Row
-            icon={<Sparkles color={colors.accent} size={18} />}
-            label="AI 模型"
-            value={PROVIDER_LABEL[defaultProvider.name] ?? defaultProvider.name}
-            note="演示阶段固定,后续支持切换"
-          />
-        </Section>
+        {/* 创作：AI 服务商 + 自带 API Key */}
+        <AiProviderSection />
 
         {/* 通知 */}
         <Section title="通知">
