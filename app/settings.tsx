@@ -184,7 +184,7 @@ export default function SettingsScreen() {
           <Row
             icon={<Info color={colors.text} size={18} />}
             label={t('settings.about')}
-            onPress={() => Alert.alert('AI Shorts', 'COMP7506 · v0.1.0')}
+            onPress={() => Alert.alert('Nexus', 'COMP7506 · v0.1.0')}
             chevron
           />
           <Row
@@ -202,7 +202,7 @@ export default function SettingsScreen() {
           <Row
             icon={<HelpCircle color={colors.text} size={18} />}
             label={t('settings.feedback')}
-            onPress={() => Share.share({ message: 'AI Shorts' }).catch(() => undefined)}
+            onPress={() => Share.share({ message: 'Nexus' }).catch(() => undefined)}
             chevron
           />
         </Section>
@@ -217,7 +217,7 @@ export default function SettingsScreen() {
           </View>
         )}
 
-        <Text style={styles.footer}>AI Shorts · v0.1.0 · COMP7506</Text>
+        <Text style={styles.footer}>Nexus · v0.1.0 · COMP7506</Text>
       </ScrollView>
     </SafeAreaView>
   );
