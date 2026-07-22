@@ -2,7 +2,7 @@ import { View, Text, StyleSheet, FlatList, Pressable, Share, Image, ActivityIndi
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useMemo, useEffect, useRef, useState } from 'react';
-import { Settings, Share2, Lock } from 'lucide-react-native';
+import { Settings, Share2, Lock, Layers } from 'lucide-react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { colors, radius, spacing, typography } from '@/theme';
 import { useAuth } from '@/store/auth';
@@ -16,6 +16,7 @@ import { getProfile } from '@/api/supabase/profilesRepo';
 import { useTabBarSpace } from '@/hooks/useTabBarSpace';
 import { useVideoThumbnail } from '@/hooks/useVideoThumbnail';
 import type { Video } from '@/api/types';
+import { groupBySeries, type SeriesGroupItem } from '@/lib/groupSeries';
 import { LoadingState, ErrorState, EmptyState } from '@/components/ui/ScreenState';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { useT, t as translate } from '@/i18n';
@@ -86,8 +87,8 @@ export default function ProfileScreen() {
     enabled: hasSupabase && !!user,
   });
 
-  // ── 作品/点赞 tab ──────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<'works' | 'liked'>('works');
+  // ── 作品/草稿/点赞 tab ────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<'works' | 'drafts' | 'liked'>('works');
 
   const { data: likedVideos = [] } = useQuery({
     queryKey: ['likedVideos', user?.id],
@@ -95,7 +96,20 @@ export default function ProfileScreen() {
     enabled: hasSupabase && !!user && !isAnonymous && activeTab === 'liked',
   });
 
-  const displayVideos = activeTab === 'works' ? videos : likedVideos;
+  // 作品 = 已发布(public)；草稿 = 未发布(private)。草稿单独一个 tab、不折叠。
+  const publishedVideos = useMemo(() => videos.filter((v) => v.visibility === 'public'), [videos]);
+  const draftVideos = useMemo(() => videos.filter((v) => v.visibility === 'private'), [videos]);
+
+  // Works / Liked 按系列折叠成 grid 条目；Drafts 每个独立成条目（count=1）。
+  const worksGroups = useMemo(() => groupBySeries(publishedVideos), [publishedVideos]);
+  const likedGroups = useMemo(() => groupBySeries(likedVideos), [likedVideos]);
+  const draftItems = useMemo<SeriesGroupItem[]>(
+    () => draftVideos.map((cover) => ({ cover, count: 1, seriesId: cover.id })),
+    [draftVideos],
+  );
+
+  const displayItems =
+    activeTab === 'works' ? worksGroups : activeTab === 'drafts' ? draftItems : likedGroups;
 
   const totals = videos.reduce(
     (acc, v) => ({
@@ -132,8 +146,8 @@ export default function ProfileScreen() {
       </View>
 
       <FlatList
-        data={displayVideos}
-        keyExtractor={(v) => v.id}
+        data={displayItems}
+        keyExtractor={(g) => g.seriesId}
         numColumns={3}
         contentContainerStyle={[styles.grid, { paddingBottom: contentBottomPad }]}
         columnWrapperStyle={{ gap: 2 }}
@@ -174,13 +188,16 @@ export default function ProfileScreen() {
               ) : null}
             </View>
 
-            {/* 作品 / 点赞 tab bar */}
+            {/* 作品 / 草稿 / 点赞 tab bar。作品计数=系列数(折叠后)，草稿=独立条数 */}
             <View style={styles.tabsRow}>
               <Pressable style={[styles.tabsItem, activeTab === 'works' && styles.tabsItemActive]} onPress={() => setActiveTab('works')}>
                 <Text style={[styles.tabsText, activeTab === 'works' && styles.tabsTextActive]}>
-                  {t('profile.tabWorks', { n: videos.length })}
-                  {activeTab === 'works' && videos.some((v) => v.visibility === 'private')
-                    ? t('profile.draftSuffix', { n: videos.filter((v) => v.visibility === 'private').length }) : ''}
+                  {t('profile.tabWorks', { n: worksGroups.length })}
+                </Text>
+              </Pressable>
+              <Pressable style={[styles.tabsItem, activeTab === 'drafts' && styles.tabsItemActive]} onPress={() => setActiveTab('drafts')}>
+                <Text style={[styles.tabsText, activeTab === 'drafts' && styles.tabsTextActive]}>
+                  {t('profile.tabDrafts', { n: draftItems.length })}
                 </Text>
               </Pressable>
               <Pressable style={[styles.tabsItem, activeTab === 'liked' && styles.tabsItemActive]} onPress={() => setActiveTab('liked')}>
@@ -190,9 +207,9 @@ export default function ProfileScreen() {
           </View>
         }
         renderItem={({ item }) => (
-          item.status === 'generating'
-            ? <GeneratingThumb video={item} />
-            : <Thumb video={item} onPress={() => router.push(`/video/${item.id}` as any)} />
+          item.cover.status === 'generating'
+            ? <GeneratingThumb video={item.cover} />
+            : <Thumb group={item} onPress={() => router.push(`/video/${item.cover.id}` as any)} />
         )}
         ListEmptyComponent={
           activeTab === 'works' ? (
@@ -200,6 +217,11 @@ export default function ProfileScreen() {
               title={t('profile.worksEmptyTitle')}
               subtitle={t('profile.worksEmptySub')}
               cta={{ label: t('profile.worksEmptyCta'), onPress: () => router.push('/(tabs)/create') }}
+            />
+          ) : activeTab === 'drafts' ? (
+            <EmptyState
+              title={t('profile.draftsEmptyTitle')}
+              subtitle={t('profile.draftsEmptySub')}
             />
           ) : (
             <EmptyState
@@ -234,8 +256,9 @@ function GeneratingThumb({ video }: { video: Video }) {
   );
 }
 
-function Thumb({ video, onPress }: { video: Video; onPress: () => void }) {
+function Thumb({ group, onPress }: { group: SeriesGroupItem; onPress: () => void }) {
   const t = useT();
+  const video = group.cover;
   const thumb = useVideoThumbnail(
     !video.thumbnail_url ? video.video_url : undefined,
     video.thumbnail_url ?? null,
@@ -246,6 +269,13 @@ function Thumb({ video, onPress }: { video: Video; onPress: () => void }) {
         <Image source={{ uri: thumb }} style={styles.thumbImg} />
       ) : (
         <View style={[styles.thumbImg, { backgroundColor: colors.surfaceAlt }]} />
+      )}
+      {/* 系列角标：折叠了 2+ 集时右上角显示集数 */}
+      {group.count > 1 && (
+        <View style={styles.thumbSeriesBadge}>
+          <Layers size={10} color="#fff" />
+          <Text style={styles.thumbSeriesText}>{group.count}</Text>
+        </View>
       )}
       {video.visibility === 'private' && (
         <View style={styles.thumbDraftBadge}>
@@ -333,4 +363,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.7)', borderRadius: 4,
   },
   thumbDraftText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  thumbSeriesBadge: {
+    position: 'absolute', top: 4, right: 4,
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    paddingHorizontal: 5, paddingVertical: 2,
+    backgroundColor: 'rgba(0,0,0,0.7)', borderRadius: 4,
+  },
+  thumbSeriesText: { color: '#fff', fontSize: 10, fontWeight: '700' },
 });
