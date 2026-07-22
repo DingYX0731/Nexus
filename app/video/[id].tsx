@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, GitBranch, Heart, MessageCircle, Share2, Home, Info, Globe, Lock, Trash2 } from 'lucide-react-native';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { getVideo, getContinuationChain, getSeriesTree, toggleLike, setVisibility as daoSetVisibility, deleteVideo as daoDeleteVideo, type RemixKind, type SeriesNode } from '@/api/videos';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { CommentsSheet } from '@/components/comments/CommentsSheet';
@@ -17,6 +17,7 @@ import { useAuth } from '@/store/auth';
 import { hasSupabase } from '@/api/client';
 import { LoadingState, ErrorState, EmptyState } from '@/components/ui/ScreenState';
 import { FollowButton } from '@/components/social/FollowButton';
+import { myNodeIds, myPathIds } from '@/lib/seriesAuthorship';
 import { useT, type TransKey } from '@/i18n';
 
 export default function VideoDetail() {
@@ -69,6 +70,10 @@ export default function VideoDetail() {
     enabled: !!video && video.status === 'ready',
   });
   const hasSeries = series.length > 1;
+
+  // L1：我拥有的节点（上色）；L2：我的创作主路径（连线高亮）
+  const mineIds = useMemo(() => myNodeIds(series, user?.id), [series, user?.id]);
+  const pathIds = useMemo(() => myPathIds(series, user?.id), [series, user?.id]);
 
   const likeMut = useMutation({
     mutationFn: () => toggleLike(id!, user?.id ?? null),
@@ -286,32 +291,39 @@ export default function VideoDetail() {
               return (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   <View style={{ width, height }}>
-                    {/* 连线层 */}
+                    {/* 连线层：我的创作主路径(root→我最新一集)加粗高亮，其余淡灰 */}
                     <Svg width={width} height={height} style={StyleSheet.absoluteFill}>
-                      {edges.map(([from, to], i) => (
-                        <Line
-                          key={i}
-                          x1={from.x} y1={from.y} x2={to.x} y2={to.y}
-                          stroke="rgba(255,255,255,0.5)" strokeWidth={2.5}
-                          strokeLinecap="round"
-                        />
-                      ))}
+                      {edges.map(([from, to], i) => {
+                        const onMyPath = pathIds.has(from.id) && pathIds.has(to.id);
+                        return (
+                          <Line
+                            key={i}
+                            x1={from.x} y1={from.y} x2={to.x} y2={to.y}
+                            stroke={onMyPath ? colors.primary : 'rgba(255,255,255,0.28)'}
+                            strokeWidth={onMyPath ? 3.5 : 2}
+                            strokeLinecap="round"
+                          />
+                        );
+                      })}
                     </Svg>
                     {/* 节点层 */}
                     {positioned.map((node) => {
                       const isCurrent = node.id === id;
+                      const isMine = mineIds.has(node.id);
+                      // 我的节点=实心高亮，他人=淡描边；当前查看节点额外加白色外环
                       return (
                         <Pressable
                           key={node.id}
                           hitSlop={6}
                           onPress={() => { if (!isCurrent) setSelectedId(node.id); }}
-                          style={[styles.epDot, isCurrent && styles.epDotActive, {
-                            position: 'absolute',
-                            left: node.x - DOT / 2,
-                            top: node.y - DOT / 2,
-                          }]}
+                          style={[
+                            styles.epDot,
+                            isMine ? styles.epDotMine : styles.epDotOther,
+                            isCurrent && styles.epDotCurrent,
+                            { position: 'absolute', left: node.x - DOT / 2, top: node.y - DOT / 2 },
+                          ]}
                         >
-                          <Text style={[styles.dotText, isCurrent && styles.dotTextActive]}>{node.ep}</Text>
+                          <Text style={[styles.dotText, isMine && styles.dotTextMine]}>{node.ep}</Text>
                         </Pressable>
                       );
                     })}
@@ -319,6 +331,19 @@ export default function VideoDetail() {
                 </ScrollView>
               );
             })()}
+            {/* 图例：系列里同时有我和他人的续写时才显示，解释圆点配色 */}
+            {mineIds.size > 0 && mineIds.size < series.length && (
+              <View style={styles.legendRow}>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, styles.epDotMine]} />
+                  <Text style={styles.legendText}>{t('video.legendMine')}</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, styles.epDotOther]} />
+                  <Text style={styles.legendText}>{t('video.legendOther')}</Text>
+                </View>
+              </View>
+            )}
             {/* 从当前这一集继续续写（同一集可续写多个分支） */}
             <Pressable
               style={styles.stepperRemixBtn}
@@ -483,9 +508,18 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.border,
     alignItems: 'center', justifyContent: 'center',
   },
-  epDotActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  // 我的续写：实心主色高亮
+  epDotMine: { backgroundColor: colors.primary, borderColor: colors.primary },
+  // 他人续写：暗底 + 淡描边，弱化存在感
+  epDotOther: { backgroundColor: colors.surface, borderColor: 'rgba(255,255,255,0.25)' },
+  // 当前查看：白色外环，叠加在上面两种之上
+  epDotCurrent: { borderColor: '#fff', borderWidth: 2.5 },
   dotText: { ...typography.captionStrong, color: colors.textSecondary },
-  dotTextActive: { color: '#fff' },
+  dotTextMine: { color: '#fff' },
+  legendRow: { flexDirection: 'row', gap: spacing.lg, marginTop: spacing.xs },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  legendDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 1.5 },
+  legendText: { ...typography.tiny, color: colors.textMuted },
   stepperRemixBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
     paddingVertical: spacing.sm, marginTop: spacing.xs,

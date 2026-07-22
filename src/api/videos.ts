@@ -88,7 +88,7 @@ export async function getSeriesTree(videoId: string): Promise<repo.SeriesNode[]>
   const rows = snapshot().videos
     .filter((v) => v.root_id === cur.root_id)
     .map((v) => ({
-      id: v.id, parent_id: v.parent_id, depth: v.depth,
+      id: v.id, parent_id: v.parent_id, author_id: v.author_id, depth: v.depth,
       prompt: v.prompt, status: v.status, video_url: v.video_url, created_at: v.created_at,
     }));
   return repo.normalizeSeriesNodes(rows);

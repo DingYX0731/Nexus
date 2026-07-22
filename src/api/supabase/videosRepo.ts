@@ -125,6 +125,8 @@ export interface SeriesNode {
   depth: number;
   prompt: string | null;
   createdAt: string;
+  /** 该节点作者 id：用于圆点树区分「我的续写」与「他人续写」 */
+  authorId: string | null;
 }
 
 export async function getSeriesTreeRows(videoId: string): Promise<SeriesNode[]> {
@@ -134,7 +136,7 @@ export async function getSeriesTreeRows(videoId: string): Promise<SeriesNode[]> 
   if (!cur) return [];
   const { data, error } = await supabase()
     .from('videos')
-    .select('id,parent_id,depth,prompt,status,video_url,created_at')
+    .select('id,parent_id,author_id,depth,prompt,status,video_url,created_at')
     .eq('root_id', (cur as { root_id: string }).root_id);
   if (error) throw error;
   return normalizeSeriesNodes((data ?? []) as any[]);
@@ -150,6 +152,7 @@ export function normalizeSeriesNodes(rows: any[]): SeriesNode[] {
       depth: r.depth ?? 0,
       prompt: r.prompt ?? null,
       createdAt: r.created_at,
+      authorId: r.author_id ?? null,
     }))
     .sort((a, b) => a.depth - b.depth || a.createdAt.localeCompare(b.createdAt));
 }
