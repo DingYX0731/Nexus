@@ -10,6 +10,7 @@ import { FeedPager } from '@/components/feed/FeedPager';
 import { useLocalVideos } from '@/store/videos';
 import { useT } from '@/i18n';
 import { listFeed } from '@/api/videos';
+import { curateFeed } from '@/lib/feedCurate';
 import { hasSupabase } from '@/api/client';
 import { colors } from '@/theme';
 import { LoadingState, ErrorState, EmptyState } from '@/components/ui/ScreenState';
@@ -20,7 +21,7 @@ export default function FeedScreen() {
   const qc = useQueryClient();
 
   // ── Supabase 路径：react-query 从云端读已发布视频 ──────────────────────────
-  const { data: remoteVideos = [], isLoading: remoteLoading, isError: remoteError, refetch } = useQuery({
+  const { data: remoteVideos = [], isLoading: remoteLoading, isError: remoteError, refetch, dataUpdatedAt } = useQuery({
     queryKey: ['feed'],
     queryFn: listFeed,
     enabled: hasSupabase,
@@ -50,9 +51,14 @@ export default function FeedScreen() {
   );
 
   // ── 统一出口 ────────────────────────────────────────────────────────────────
-  const videos = hasSupabase ? remoteVideos : localVideos;
+  const rawVideos = hasSupabase ? remoteVideos : localVideos;
   const isLoading = hasSupabase ? remoteLoading : false;
   const isError = hasSupabase ? remoteError : false;
+
+  // Feed 整理：同系列同作者只留最新一集 + 用种子打乱。
+  // 种子取自本次拉取时间(dataUpdatedAt)：同次浏览稳定，刷新拉取才重排；本地路径按视频数兜底。
+  const feedSeed = hasSupabase ? dataUpdatedAt : rawVideos.length;
+  const videos = useMemo(() => curateFeed(rawVideos, feedSeed || 1), [rawVideos, feedSeed]);
 
   if (isLoading) {
     return <LoadingState text={t('common.loading')} />;
