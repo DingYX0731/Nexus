@@ -351,13 +351,19 @@ export async function submitTextToVideo(opts: SubmitTextOptions): Promise<AiJobR
   return rec;
 }
 
-// 解析续写首帧：拿到上一段视频「最后一帧」的公开 URL 传给豆包（图生视频）。
+// 解析续写首帧：拿到上一段视频「真正的最后一帧」的公开 URL 传给豆包（图生视频）。
 // 豆包服务端 fetch 图片，必须是公开 URL，不能是本地 file://。
-// 1) 已有 tail_frame_url（demo 视频回填过 / 未来回填）→ 直接用
-// 2) Supabase 模式且无尾帧 → 客户端抽末帧 + 上传 thumbnails 得公开 URL
-// 3) 兜底 → thumbnail_url ?? undefined（退化为纯文生，行为同旧版）
+//
+// ⚠️ 关键：绝不能优先信任 parentVideo.tail_frame_url。
+// 豆包对图生视频返回的 image_url 是「输入首帧」的回显，poll-video 却把它存进了
+// tail_frame_url 字段——所以对「本身由续写生成的父视频」，tail_frame_url 实际是它的
+// *首帧* 而非尾帧。若直接用它，续写会从上一集开头接起（画面倒退/断裂）。
+//
+// 因此永远优先「实时抽取父视频真正的最后一帧」：
+// 1) Supabase 模式 → 抽末帧 + 上传 thumbnails 得公开 URL（每次 rec.id 唯一，避免串帧）
+// 2) 抽帧/上传失败 → 退回 tail_frame_url（对文生父视频恰好是可用的输入图占位）
+// 3) 再兜底 → thumbnail_url ?? undefined（退化为纯文生）
 async function resolveContinuationFrame(rec: AiJobRecord, parentVideo: Video): Promise<string | undefined> {
-  if (parentVideo.tail_frame_url) return parentVideo.tail_frame_url;
   if (hasSupabase && parentVideo.video_url) {
     try {
       useJobsStoreInternal.getState().patch(rec.id, { statusMsg: t('job.extractingFrame') });
@@ -371,7 +377,7 @@ async function resolveContinuationFrame(rec: AiJobRecord, parentVideo: Video): P
       // 抽帧/上传失败不阻断，退回兜底
     }
   }
-  return parentVideo.thumbnail_url ?? undefined;
+  return parentVideo.tail_frame_url ?? parentVideo.thumbnail_url ?? undefined;
 }
 
 export async function submitContinuation(opts: SubmitContinuationOptions): Promise<AiJobRecord> {

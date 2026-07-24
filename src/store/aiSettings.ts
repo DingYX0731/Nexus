@@ -31,7 +31,7 @@ export const PROVIDERS: {
     label: '豆包 Seedance（Paratera 中转）',
     keyHint: '在 llmapi.paratera.com 获取的 API Key',
     models: [
-      { id: 'Doubao-Seedance-1.0-Pro', label: 'Seedance 1.0 Pro', note: '文生/图生视频 · 已验证可用' },
+      { id: 'Doubao-Seedance-1.0-Pro', label: 'Seedance 1.0 Pro' },
     ],
   },
 ];
