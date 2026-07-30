@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -21,7 +21,7 @@ export default function FeedScreen() {
   const qc = useQueryClient();
 
   // ── Supabase 路径：react-query 从云端读已发布视频 ──────────────────────────
-  const { data: remoteVideos = [], isLoading: remoteLoading, isError: remoteError, refetch, dataUpdatedAt } = useQuery({
+  const { data: remoteVideos = [], isLoading: remoteLoading, isError: remoteError, refetch } = useQuery({
     queryKey: ['feed'],
     queryFn: listFeed,
     enabled: hasSupabase,
@@ -56,9 +56,11 @@ export default function FeedScreen() {
   const isError = hasSupabase ? remoteError : false;
 
   // Feed 整理：同系列同作者只留最新一集 + 用种子打乱。
-  // 种子取自本次拉取时间(dataUpdatedAt)：同次浏览稳定，刷新拉取才重排；本地路径按视频数兜底。
-  const feedSeed = hasSupabase ? dataUpdatedAt : rawVideos.length;
-  const videos = useMemo(() => curateFeed(rawVideos, feedSeed || 1), [rawVideos, feedSeed]);
+  // ⚠️ 种子必须在整段浏览期间稳定：进页面时随机定一次并固定。
+  // 绝不能用 dataUpdatedAt——点赞/评论会 invalidate feed 触发重新拉取，
+  // 若种子随之变化会重新洗牌，当前视频位置错乱（表现为"点一下就滑走"）。
+  const [feedSeed] = useState(() => Math.floor(Math.random() * 1e9) + 1);
+  const videos = useMemo(() => curateFeed(rawVideos, feedSeed), [rawVideos, feedSeed]);
 
   if (isLoading) {
     return <LoadingState text={t('common.loading')} />;
