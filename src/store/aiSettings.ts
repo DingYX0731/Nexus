@@ -28,7 +28,7 @@ export const PROVIDERS: {
 }[] = [
   {
     id: 'doubao',
-    label: '豆包 Seedance（Paratera 中转）',
+    label: 'Paratera',
     keyHint: '在 llmapi.paratera.com 获取的 API Key',
     models: [
       { id: 'Doubao-Seedance-1.0-Pro', label: 'Seedance 1.0 Pro' },
